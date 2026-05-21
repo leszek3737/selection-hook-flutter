@@ -64,7 +64,6 @@ static uint64_t s_lastMouseUpTime = 0;
 static CGPoint s_lastMouseDownPos = CGPointZero;
 static uint64_t s_lastMouseDownTime = 0;
 static bool s_isLastValidClick = false;
-static bool s_isLastMouseDownValidCursor = false;
 
 // Run loop synchronization
 static std::promise<CFRunLoopRef> s_eventRunLoopPromise;
@@ -378,7 +377,6 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
         {
             s_lastMouseDownTime = currentTime;
             s_lastMouseDownPos = currentPos;
-            s_isLastMouseDownValidCursor = IsIBeamCursor([NSCursor currentSystemCursor]);
             clipboard_sequence = GetClipboardSequence();
             break;
         }
@@ -391,7 +389,6 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
                 double distance = sqrt(dx * dx + dy * dy);
 
                 bool isCurrentValidClick = (currentTime - s_lastMouseDownTime) <= DOUBLE_CLICK_TIME_MS;
-                bool isValidCursor = s_isLastMouseDownValidCursor || IsIBeamCursor([NSCursor currentSystemCursor]);
 
                 if ((currentTime - s_lastMouseDownTime) > MAX_DRAG_TIME_MS)
                 {
@@ -399,11 +396,8 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
                 }
                 else if (distance >= MIN_DRAG_DISTANCE)
                 {
-                    if (isValidCursor)
-                    {
-                        shouldDetectSelection = true;
-                        detectionType = SelectionDetectType::Drag;
-                    }
+                    shouldDetectSelection = true;
+                    detectionType = SelectionDetectType::Drag;
                 }
                 else if (s_isLastValidClick && isCurrentValidClick && distance <= DOUBLE_CLICK_MAX_DISTANCE)
                 {
@@ -414,11 +408,8 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
                     if (distance2 <= DOUBLE_CLICK_MAX_DISTANCE &&
                         (s_lastMouseDownTime - s_lastMouseUpTime) <= DOUBLE_CLICK_TIME_MS)
                     {
-                        if (isValidCursor)
-                        {
-                            shouldDetectSelection = true;
-                            detectionType = SelectionDetectType::DoubleClick;
-                        }
+                        shouldDetectSelection = true;
+                        detectionType = SelectionDetectType::DoubleClick;
                     }
                 }
 
@@ -432,11 +423,8 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
 
                     if (isShiftPressed && !isCtrlPressed && !isCmdPressed && !isOptionPressed)
                     {
-                        if (isValidCursor)
-                        {
-                            shouldDetectSelection = true;
-                            detectionType = SelectionDetectType::ShiftClick;
-                        }
+                        shouldDetectSelection = true;
+                        detectionType = SelectionDetectType::ShiftClick;
                     }
                 }
                 s_isLastValidClick = isCurrentValidClick;
