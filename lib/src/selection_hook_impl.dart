@@ -28,9 +28,14 @@ class MouseEvent {
   bool get isMouseWheel => eventType == 3;
 
   @override
-  String toString() =>
-      'MouseEvent(${['down', 'up', 'move', 'wheel'][eventType]}, '
-      'x=$x, y=$y, button=$button, flag=$flag)';
+  String toString() {
+    const types = ['down', 'up', 'move', 'wheel'];
+    final typeName = eventType >= 0 && eventType < types.length
+        ? types[eventType]
+        : 'unknown($eventType)';
+    return 'MouseEvent($typeName, '
+        'x=$x, y=$y, button=$button, flag=$flag)';
+  }
 }
 
 /// Keyboard event.

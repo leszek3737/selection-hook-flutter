@@ -41,7 +41,6 @@ class SelectionHook {
 
   static SelectionHook? _instance;
 
-  /// The shared singleton instance.
   static SelectionHook get instance => _instance ??= SelectionHook._();
 
   SelectionHookImpl? _impl;
@@ -52,23 +51,44 @@ class SelectionHook {
 
   bool _isStarted = false;
   bool _isDisposed = false;
+  bool _mouseCbRegistered = false;
+  bool _keyboardCbRegistered = false;
 
   /// Stream of text selection events.
-  ///
-  /// Broadcast stream — multiple listeners allowed. Events are delivered
-  /// on the main isolate.
   Stream<TextSelectionEvent> get onTextSelection => _controller.stream;
 
   /// Mouse events (down, up, move, wheel).
   Stream<MouseEvent> get onMouseEvent {
-    _mouseController ??= StreamController<MouseEvent>.broadcast();
+    _mouseController ??= StreamController<MouseEvent>.broadcast(
+      onListen: _onMouseListen,
+    );
     return _mouseController!.stream;
   }
 
   /// Keyboard events (down, up).
   Stream<KeyboardEvent> get onKeyboardEvent {
-    _keyboardController ??= StreamController<KeyboardEvent>.broadcast();
+    _keyboardController ??= StreamController<KeyboardEvent>.broadcast(
+      onListen: _onKeyboardListen,
+    );
     return _keyboardController!.stream;
+  }
+
+  void _onMouseListen() {
+    if (_isStarted && _impl != null && !_mouseCbRegistered) {
+      _impl!.registerMouseCallback((event) {
+        if (!_mouseController!.isClosed) _mouseController!.add(event);
+      });
+      _mouseCbRegistered = true;
+    }
+  }
+
+  void _onKeyboardListen() {
+    if (_isStarted && _impl != null && !_keyboardCbRegistered) {
+      _impl!.registerKeyboardCallback((event) {
+        if (!_keyboardController!.isClosed) _keyboardController!.add(event);
+      });
+      _keyboardCbRegistered = true;
+    }
   }
 
   /// Whether the hook is currently monitoring.
@@ -95,15 +115,13 @@ class SelectionHook {
         _controller.add(event);
       }
     });
+    // Register mouse/keyboard callbacks eagerly if listeners already exist.
+    // For listeners added later, onListen will trigger registration lazily.
     if (_mouseController != null && _mouseController!.hasListener) {
-      _impl!.registerMouseCallback((event) {
-        if (!_mouseController!.isClosed) _mouseController!.add(event);
-      });
+      _onMouseListen();
     }
     if (_keyboardController != null && _keyboardController!.hasListener) {
-      _impl!.registerKeyboardCallback((event) {
-        if (!_keyboardController!.isClosed) _keyboardController!.add(event);
-      });
+      _onKeyboardListen();
     }
     _impl!.start();
     _isStarted = true;
@@ -162,6 +180,8 @@ class SelectionHook {
     if (_isDisposed) return;
     _isDisposed = true;
     _isStarted = false;
+    _mouseCbRegistered = false;
+    _keyboardCbRegistered = false;
     _mouseController?.close();
     _mouseController = null;
     _keyboardController?.close();

@@ -444,7 +444,7 @@ CGEventRef SelectionHookCore::keyboardEventCallback(CGEventTapProxy proxy, CGEve
         hook->cached_keyboard_event.uni_key = hook->cached_uni_key.c_str();
         hook->cached_keyboard_event.vk_code = static_cast<int32_t>(keyCode);
         hook->cached_keyboard_event.sys = isSysKey ? 1 : 0;
-        hook->cached_keyboard_event.flags = static_cast<int32_t>(flags);
+        hook->cached_keyboard_event.flags = static_cast<int32_t>(flags & 0xFFFFFFFF);
         hook->keyboardCallback(&hook->cached_keyboard_event);
     }
 
