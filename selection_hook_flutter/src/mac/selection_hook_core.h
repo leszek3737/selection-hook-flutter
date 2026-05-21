@@ -113,6 +113,13 @@ class SelectionHookCore
     pid_t running_pid{0};
     mutable std::string last_error;
 
+    // String buffers for callback data — heap-allocated (SelectionHookCore is heap object).
+    // dispatchSelection copies selectionInfo strings here before calling callback,
+    // ensuring c_str() pointers survive Dart FFI marshalling.
+    std::string cached_text;
+    std::string cached_program;
+    SHSelectionData cached_sel_data{};
+
     CFRunLoopRef eventRunLoop{nullptr};
     CFMachPortRef mouseEventTap{nullptr};
     CFMachPortRef keyboardEventTap{nullptr};

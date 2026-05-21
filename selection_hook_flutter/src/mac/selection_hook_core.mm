@@ -231,6 +231,10 @@ void SelectionHookCore::eventThreadProc()
         CFRunLoopAddSource(eventRunLoop, mouseRunLoopSource, kCFRunLoopDefaultMode);
         CGEventTapEnable(mouseEventTap, true);
     }
+    else
+    {
+        NSLog(@"SelectionHook: CGEventTapCreate failed — check Input Monitoring permission or disable sandbox");
+    }
 
     CGEventMask keyboardMask =
         CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp) | CGEventMaskBit(kCGEventFlagsChanged);
@@ -332,7 +336,12 @@ CGEventRef SelectionHookCore::mouseEventCallback(CGEventTapProxy proxy, CGEventT
             break;
     }
 
-    hook->processMouseEvent(type, CGEventGetLocation(event), button, flag, CGEventGetFlags(event));
+    CGPoint pos = CGEventGetLocation(event);
+    CGEventFlags flags = CGEventGetFlags(event);
+    NSLog(@"[SH] mouseEventCallback type=%llu running=%d", (uint64_t)type, hook->running.load());
+    dispatch_async(dispatch_get_main_queue(), ^{
+        hook->processMouseEvent(type, pos, button, flag, flags);
+    });
 
     return event;
 }
@@ -360,6 +369,9 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
     {
         return;
     }
+
+    NSLog(@"[SH] processMouseEvent type=%llu running=%d isMain=%d", 
+          (uint64_t)type, running.load(), (int)[NSThread isMainThread]);
 
     auto currentTime =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
@@ -489,6 +501,9 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
                     break;
             }
 
+            NSLog(@"[SH] dispatching selection text='%s' prog='%s' callback=%p running=%d",
+                  selectionInfo.text.c_str(), selectionInfo.programName.c_str(),
+                  callback, running.load());
             dispatchSelection(selectionInfo);
         }
     }
@@ -496,12 +511,21 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
 
 void SelectionHookCore::dispatchSelection(const TextSelectionInfo &info)
 {
-    if (!callback || !running)
+    if (!callback || !running) {
+        NSLog(@"[SH] dispatchSelection SKIPPED: callback=%p running=%d", callback, running.load());
         return;
+    }
 
-    SHSelectionData data;
-    fillSHSelectionData(info, data);
-    callback(&data);
+    // Copy strings to heap storage before calling callback.
+    // Stack-local c_str() from selectionInfo can become invalid during Dart FFI marshalling.
+    cached_text = info.text;
+    cached_program = info.programName;
+    cached_sel_data.text = cached_text.c_str();
+    cached_sel_data.program_name = cached_program.c_str();
+
+    NSLog(@"[SH] dispatchSelection calling callback=%p data=%p", callback, &cached_sel_data);
+    callback(&cached_sel_data);
+    NSLog(@"[SH] dispatchSelection callback returned");
 }
 
 void SelectionHookCore::fillSHSelectionData(const TextSelectionInfo &info, SHSelectionData &out) const
@@ -522,6 +546,8 @@ void SelectionHookCore::fillSHSelectionData(const TextSelectionInfo &info, SHSel
     out.mouse_end.y = static_cast<int32_t>(info.mousePosEnd.y);
     out.method = static_cast<int32_t>(info.method);
     out.pos_level = static_cast<int32_t>(info.posLevel);
+    NSLog(@"[SH] fillSHSelectionData text=%p prog=%p text='%s' prog='%s'",
+          out.text, out.program_name, out.text, out.program_name);
     out.is_fullscreen = info.isFullscreen ? 1 : 0;
 }
 

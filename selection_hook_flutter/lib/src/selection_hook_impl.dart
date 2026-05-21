@@ -96,9 +96,12 @@ class SelectionHookImpl {
             .listener((ffi.Pointer<SHSelectionData> data) {
       // Copy all fields before returning — pointer is valid only during callback.
       final ref = data.ref;
+      final text = ref.text.toDartString();
+      final prog = ref.program_name.toDartString();
+      print('[Dart] text="$text" prog="$prog"');
       final event = TextSelectionEvent(
-        text: ref.text.toDartString(),
-        programName: ref.program_name.toDartString(),
+        text: text,
+        programName: prog,
         startX: ref.start_top.x,
         startY: ref.start_top.y,
         endX: ref.end_top.x,
