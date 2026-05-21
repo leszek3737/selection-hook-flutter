@@ -136,6 +136,14 @@ class SelectionHookCore
     std::string cached_program;
     SHSelectionData cached_sel_data{};
 
+    // Cached mouse/keyboard event structs — heap-backed (SelectionHookCore is heap
+    // object). Filled inside dispatch_async blocks on the main queue before calling
+    // the corresponding NativeCallable.listener callback. Single-event race is
+    // acceptable for human-speed input (<10 Hz).
+    SHMouseEventData cached_mouse_event{};
+    SHKeyboardEventData cached_keyboard_event{};
+    std::string cached_uni_key;
+
     CFRunLoopRef eventRunLoop{nullptr};
     CFMachPortRef mouseEventTap{nullptr};
     CFMachPortRef keyboardEventTap{nullptr};

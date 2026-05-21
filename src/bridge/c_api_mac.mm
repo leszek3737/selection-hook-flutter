@@ -156,11 +156,13 @@ SH_API int sh_set_keyboard_callback(SelectionHook* hook, SHKeyboardCallback call
 
 SH_API int sh_enable_mouse_move(SelectionHook* hook) {
     if (!hook || !hook->core) return SH_ERR_INVALID_ARG;
+    hook->core->enableMouseMove();
     return SH_OK;
 }
 
 SH_API int sh_disable_mouse_move(SelectionHook* hook) {
     if (!hook || !hook->core) return SH_ERR_INVALID_ARG;
+    hook->core->disableMouseMove();
     return SH_OK;
 }
 
@@ -171,6 +173,10 @@ SH_API int sh_set_config(SelectionHook* hook, const SHSelectionConfig* config) {
     hook->core->setPassiveMode(config->selection_passive_mode != 0);
     hook->core->setClipboardMode(static_cast<FilterMode>(config->clipboard_mode), {});
     hook->core->setGlobalFilterMode(static_cast<FilterMode>(config->global_filter_mode), {});
+    if (config->enable_mouse_move)
+        hook->core->enableMouseMove();
+    else
+        hook->core->disableMouseMove();
     return SH_OK;
 }
 

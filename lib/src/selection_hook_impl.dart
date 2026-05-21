@@ -314,19 +314,17 @@ class SelectionHookImpl {
       ..selection_passive_mode = selectionPassiveMode ? 1 : 0
       ..clipboard_mode = 0
       ..global_filter_mode = 0;
-    _bindings.sh_set_config(_hook, config);
+    final result = _bindings.sh_set_config(_hook, config);
     calloc.free(config);
+    if (result != SH_OK) {
+      throw StateError('sh_set_config failed with error code $result');
+    }
   }
 
   /// Write text to clipboard. macOS/Windows only.
   bool writeClipboard(String text) {
     if (_isDisposed) return false;
-    final bytes = utf8.encode(text);
-    final cStr = calloc<ffi.Char>(bytes.length + 1);
-    for (var i = 0; i < bytes.length; i++) {
-      cStr[i] = bytes[i];
-    }
-    cStr[bytes.length] = 0;
+    final cStr = text.toNativeUtf8();
     final result = _bindings.sh_write_clipboard(_hook, cStr.cast());
     calloc.free(cStr);
     return result == SH_OK;

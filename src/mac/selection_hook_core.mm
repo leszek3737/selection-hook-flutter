@@ -390,31 +390,30 @@ CGEventRef SelectionHookCore::mouseEventCallback(CGEventTapProxy proxy, CGEventT
         if (!hook || !hook->running)
             return;
         hook->processMouseEvent(type, pos, button, flag, flags);
-    });
 
-    if (hook->mouseCallback) {
-        SHMouseEventData md = {};
-        md.x = static_cast<int32_t>(pos.x);
-        md.y = static_cast<int32_t>(pos.y);
-        md.button = static_cast<int32_t>(button);
-        md.flag = static_cast<int32_t>(flag);
-        switch (type) {
-            case kCGEventLeftMouseDown:
-            case kCGEventRightMouseDown:
-            case kCGEventOtherMouseDown:
-                md.event_type = 0; break;
-            case kCGEventLeftMouseUp:
-            case kCGEventRightMouseUp:
-            case kCGEventOtherMouseUp:
-                md.event_type = 1; break;
-            case kCGEventMouseMoved:
-                md.event_type = 2; break;
-            case kCGEventScrollWheel:
-                md.event_type = 3; break;
-            default: break;
+        if (hook->mouseCallback) {
+            hook->cached_mouse_event.x = static_cast<int32_t>(pos.x);
+            hook->cached_mouse_event.y = static_cast<int32_t>(pos.y);
+            hook->cached_mouse_event.button = static_cast<int32_t>(button);
+            hook->cached_mouse_event.flag = static_cast<int32_t>(flag);
+            switch (type) {
+                case kCGEventLeftMouseDown:
+                case kCGEventRightMouseDown:
+                case kCGEventOtherMouseDown:
+                    hook->cached_mouse_event.event_type = 0; break;
+                case kCGEventLeftMouseUp:
+                case kCGEventRightMouseUp:
+                case kCGEventOtherMouseUp:
+                    hook->cached_mouse_event.event_type = 1; break;
+                case kCGEventMouseMoved:
+                    hook->cached_mouse_event.event_type = 2; break;
+                case kCGEventScrollWheel:
+                    hook->cached_mouse_event.event_type = 3; break;
+                default: break;
+            }
+            hook->mouseCallback(&hook->cached_mouse_event);
         }
-        hook->dispatchMouseEvent(md);
-    }
+    });
 
     return event;
 }
@@ -441,12 +440,12 @@ CGEventRef SelectionHookCore::keyboardEventCallback(CGEventTapProxy proxy, CGEve
 
         std::string uniKey = convertKeyCodeToUniKey(keyCode, flags);
 
-        SHKeyboardEventData kd = {};
-        kd.uni_key = uniKey.c_str();
-        kd.vk_code = static_cast<int32_t>(keyCode);
-        kd.sys = isSysKey ? 1 : 0;
-        kd.flags = static_cast<int32_t>(flags);
-        hook->dispatchKeyboardEvent(kd);
+        hook->cached_uni_key = uniKey;
+        hook->cached_keyboard_event.uni_key = hook->cached_uni_key.c_str();
+        hook->cached_keyboard_event.vk_code = static_cast<int32_t>(keyCode);
+        hook->cached_keyboard_event.sys = isSysKey ? 1 : 0;
+        hook->cached_keyboard_event.flags = static_cast<int32_t>(flags);
+        hook->keyboardCallback(&hook->cached_keyboard_event);
     }
 
     return event;
