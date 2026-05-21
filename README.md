@@ -3,7 +3,7 @@
 Cross-platform text selection monitoring for Flutter desktop apps via FFI.
 
 Detects text selections in **any application** on Windows, macOS, and Linux using
-platform accessibility APIs (UIAutomation, AXAPI, X11/Wayland PRIMARY selection).
+platform accessibility APIs (UIAutomation, AXAPI, X11 PRIMARY selection).
 
 Ported from [selection-hook](https://github.com/0xfullex/selection-hook) (Node.js
 N-API) to C-ABI for `dart:ffi` — preserving ~95% of the upstream native code.
@@ -23,15 +23,15 @@ N-API) to C-ABI for `dart:ffi` — preserving ~95% of the upstream native code.
 
 | Feature | macOS | Windows | Linux X11 | Linux Wayland |
 |---------|-------|---------|-----------|---------------|
-| Text selection | ✅ | planned | planned | planned |
-| Mouse events | ✅ | planned | planned | planned |
-| Keyboard events | ✅ | planned | planned | planned |
+| Text selection | ✅ | planned | planned | - |
+| Mouse events | ✅ | planned | planned | - |
+| Keyboard events | ✅ | planned | planned | - |
 | Clipboard | ✅ | planned | — | — |
 
 ## Requirements
 
 - Flutter >= 3.3.0 / Dart >= 3.12.0
-- macOS 10.14+, Windows 7+, Linux (X11/Wayland)
+- macOS 10.14+, Windows 7+, Linux (X11)
 
 ### macOS Permissions
 
