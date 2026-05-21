@@ -89,7 +89,7 @@ SH_API const SHSelectionData* sh_get_current_selection(SelectionHook* hook) {
     if (!hook || !hook->core) return nullptr;
 
     TextSelectionInfo* info = hook->core->getCurrentSelection();
-    if (!info || info->text.empty()) return nullptr;
+    if (!info || info->text.empty()) { delete info; return nullptr; }
 
     std::lock_guard<std::mutex> lock(hook->cache_mutex);
 
@@ -125,6 +125,7 @@ SH_API const SHSelectionData* sh_get_current_selection(SelectionHook* hook) {
     hook->cached_sel_data.method = static_cast<int32_t>(info->method);
     hook->cached_sel_data.pos_level = static_cast<int32_t>(info->posLevel);
     hook->cached_sel_data.is_fullscreen = info->isFullscreen ? 1 : 0;
+    delete info;
     hook->has_cached_selection = true;
 
     return &hook->cached_sel_data;

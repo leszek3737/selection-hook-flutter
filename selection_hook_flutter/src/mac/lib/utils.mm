@@ -106,7 +106,11 @@ bool IsIBeamCursor(NSCursor *cursor)
     if (!cursor)
         return false;
 
-    return true;
+    NSPoint hotSpot = [cursor hotSpot];
+
+    // macOS 26 IBeam {12,11}. Standard IBeam {4,9}.
+    return NSEqualPoints(hotSpot, {4.0, 9.0}) || NSEqualPoints(hotSpot, {16.0, 16.0}) ||
+           NSEqualPoints(hotSpot, {12.0, 11.0});
 }
 
 /**

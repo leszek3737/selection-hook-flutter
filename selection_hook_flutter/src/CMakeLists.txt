@@ -10,15 +10,10 @@ if (APPLE)
     "mac/lib/clipboard.mm"
     "mac/lib/keyboard.mm"
   )
-  set(FRAMEWORKS
-    "-framework ApplicationServices"
-    "-framework Cocoa"
-  )
 else()
   set(SOURCES
     "bridge/c_api.cc"
   )
-  set(FRAMEWORKS "")
 endif()
 
 add_library(selection_hook_flutter SHARED ${SOURCES})

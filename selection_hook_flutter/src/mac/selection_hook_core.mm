@@ -520,8 +520,12 @@ void SelectionHookCore::dispatchSelection(const TextSelectionInfo &info)
         return;
     }
 
-    // Copy strings to heap storage before calling callback.
-    // Stack-local c_str() from selectionInfo can become invalid during Dart FFI marshalling.
+    // Fill all fields (coords, method, posLevel, isFullscreen)
+    fillSHSelectionData(info, cached_sel_data);
+
+    // Override string pointers with heap-allocated copies.
+    // fillSHSelectionData sets c_str() from stack-local TextSelectionInfo
+    // which becomes invalid during Dart FFI marshalling.
     cached_text = info.text;
     cached_program = info.programName;
     cached_sel_data.text = cached_text.c_str();

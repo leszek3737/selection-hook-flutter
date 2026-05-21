@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
@@ -42,7 +43,7 @@ extension Utf8Pointer on Pointer<Int8> {
       buff.add(byte);
       offset++;
     }
-    return String.fromCharCodes(buff);
+    return utf8.decode(buff);
   }
 }
 
