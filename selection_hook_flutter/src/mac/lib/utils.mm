@@ -106,9 +106,16 @@ bool IsIBeamCursor(NSCursor *cursor)
     if (!cursor)
         return false;
 
-    NSPoint hotSpot = [cursor hotSpot];
+    // Compare against the standard I-beam cursor singleton.
+    // Hotspot-based comparison is fragile across macOS versions,
+    // cursor sizes, and accessibility settings.
+    NSCursor *ibeam = [NSCursor IBeamCursor];
+    if (cursor == ibeam)
+        return true;
 
-    // macOS 26 IBeam {12,11}
+    // Fallback: check hotspot ranges for I-beam variants
+    // (older macOS, scaled/retina cursors, custom size in Accessibility).
+    NSPoint hotSpot = [cursor hotSpot];
     return NSEqualPoints(hotSpot, {4.0, 9.0}) || NSEqualPoints(hotSpot, {16.0, 16.0}) ||
            NSEqualPoints(hotSpot, {12.0, 11.0});
 }
