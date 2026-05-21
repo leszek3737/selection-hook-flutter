@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
 
@@ -209,14 +210,14 @@ class SelectionHookImpl {
 /// Reads a NUL-terminated UTF-8 string from a `Pointer<Char>`.
 extension Utf8 on ffi.Pointer<ffi.Char> {
   String toDartString() {
-    final codeUnits = <int>[];
+    final bytes = <int>[];
     var i = 0;
     while (true) {
       final byte = cast<ffi.Uint8>()[i];
       if (byte == 0) break;
-      codeUnits.add(byte);
+      bytes.add(byte);
       i++;
     }
-    return String.fromCharCodes(codeUnits);
+    return utf8.decode(bytes);
   }
 }
