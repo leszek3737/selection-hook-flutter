@@ -30,10 +30,9 @@
  *   Dart must use `NativeCallable.listener` to receive callbacks.
  * - `sh_stop` is synchronous: blocks until no callback is in-flight.
  *
- * ## MVP Scope
- * This header covers the minimal viable subset. Extensions (mouse events,
- * keyboard events, clipboard, filtering, passive mode, Linux env info) will be
- * added in a later phase.
+ * ## Scope
+ * This header covers the full API surface including mouse events, keyboard
+ * events, clipboard, filtering, passive mode, and platform-specific helpers.
  */
 
 #ifndef SELECTION_HOOK_C_API_H
@@ -156,6 +155,60 @@ typedef enum {
  * @param data Selection data. Lifetime = callback duration. Copy immediately.
  */
 typedef void (*SHSelectionCallback)(const SHSelectionData* data);
+
+/**
+ * Mouse/wheel event data.
+ *
+ * event_type: 0=mouse-down, 1=mouse-up, 2=mouse-move, 3=mouse-wheel
+ * button: None=-1, Left=0, Middle=1, Right=2, Back=3, Forward=4, Unknown=99.
+ *   For mouse-wheel: 0=Vertical, 1=Horizontal.
+ * flag: wheel direction (1=Up/Right, -1=Down/Left; 0 for non-wheel events).
+ *
+ * Sentinel INVALID_COORDINATE (-99999) applies to x/y on Linux Wayland.
+ */
+typedef struct {
+    int32_t x;
+    int32_t y;
+    int32_t button;
+    int32_t event_type;
+    int32_t flag;
+} SHMouseEventData;
+
+/**
+ * Keyboard event data.
+ *
+ * uni_key: MDN KeyboardEvent.key value (UTF-8, NUL-terminated).
+ *   Library-owned, valid only during callback.
+ * vk_code: Platform-specific virtual key code.
+ *   Windows=VK_*, macOS=kVK_*, Linux=KEY_* from linux/input-event-codes.h.
+ * sys: Non-zero if Alt/Ctrl/Win/Cmd/Fn modifier pressed simultaneously.
+ * flags: Additional platform-specific flags (Linux: modifier bitmask).
+ */
+typedef struct {
+    const char* uni_key;
+    int32_t vk_code;
+    int32_t sys;
+    int32_t flags;
+} SHKeyboardEventData;
+
+/** Mouse event callback. data valid only during callback. */
+typedef void (*SHMouseCallback)(const SHMouseEventData* data);
+
+/** Keyboard event callback. data valid only during callback. */
+typedef void (*SHKeyboardCallback)(const SHKeyboardEventData* data);
+
+/**
+ * Configuration for text selection monitoring.
+ * All fields are optional — pass 0 for defaults.
+ */
+typedef struct {
+    int32_t debug;                    // 1=enable diagnostic logging
+    int32_t enable_mouse_move;        // 1=enable high-CPU mouse-move events
+    int32_t enable_clipboard;        // 1=enable clipboard fallback (default: 1)
+    int32_t selection_passive_mode;  // 1=require manual trigger for selection
+    int32_t clipboard_mode;          // FilterMode: 0=Default, 1=IncludeList, 2=ExcludeList
+    int32_t global_filter_mode;      // FilterMode for global program filter
+} SHSelectionConfig;
 
 /* ---------------------------------------------------------------------------
  * Error Codes
@@ -321,38 +374,161 @@ SH_API const char* sh_last_error(SelectionHook* hook);
 SH_API const char* sh_last_global_error(void);
 
 /* ---------------------------------------------------------------------------
- * Future Extensions (NOT IMPLEMENTED in MVP)
- *
- * The following functions will be added in a later phase:
- *
- *   // Mouse events
- *   SH_API int sh_set_mouse_callback(SelectionHook*, SHMouseCallback);
- *   SH_API int sh_enable_mouse_move(SelectionHook*);
- *   SH_API int sh_disable_mouse_move(SelectionHook*);
- *
- *   // Keyboard events
- *   SH_API int sh_set_keyboard_callback(SelectionHook*, SHKeyboardCallback);
- *
- *   // Clipboard
- *   SH_API int sh_enable_clipboard(SelectionHook*);
- *   SH_API int sh_disable_clipboard(SelectionHook*);
- *   SH_API int sh_set_clipboard_mode(SelectionHook*, int mode,
- *                                     const char** program_list, int count);
- *   SH_API int sh_write_clipboard(SelectionHook*, const char* text);
- *   SH_API const char* sh_read_clipboard(SelectionHook*);
- *
- *   // Configuration
- *   SH_API int sh_set_global_filter_mode(SelectionHook*, int mode,
- *                                         const char** program_list, int count);
- *   SH_API int sh_set_fine_tuned_list(SelectionHook*, int list_type,
- *                                      const char** program_list, int count);
- *   SH_API int sh_set_passive_mode(SelectionHook*, int passive);
- *
- *   // Platform-specific
- *   SH_API int sh_mac_is_process_trusted(SelectionHook*);
- *   SH_API int sh_mac_request_process_trust(SelectionHook*);
- *   SH_API int sh_linux_get_env_info(SelectionHook*, ...);
+ * Mouse Events
  * --------------------------------------------------------------------------- */
+
+/**
+ * Register a callback for mouse/wheel events.
+ *
+ * The callback is invoked from native system threads. Data pointers are
+ * valid only for the duration of the callback — Dart MUST copy immediately.
+ *
+ * Must be called before sh_start. Calling after sh_start has undefined
+ * behavior — stop first.
+ *
+ * @param hook Valid SelectionHook instance.
+ * @param callback Function pointer, or NULL to unregister.
+ * @return SH_OK (0) on success.
+ * @thread_safety May be called from any thread before sh_start.
+ */
+SH_API int sh_set_mouse_callback(SelectionHook* hook, SHMouseCallback callback);
+
+/**
+ * Enable mouse-move events.
+ *
+ * Mouse-move events are high-CPU on some platforms. Only enable if your
+ * application needs per-pixel mouse tracking.
+ *
+ * @param hook Valid SelectionHook instance (must be started).
+ * @return SH_OK (0) on success, negative error code on failure.
+ * @thread_safety Safe from any thread.
+ */
+SH_API int sh_enable_mouse_move(SelectionHook* hook);
+
+/**
+ * Disable mouse-move events.
+ *
+ * Stops receiving mouse-move callbacks. Mouse-down, mouse-up, and
+ * mouse-wheel events are unaffected.
+ *
+ * @param hook Valid SelectionHook instance (must be started).
+ * @return SH_OK (0) on success, negative error code on failure.
+ * @thread_safety Safe from any thread.
+ */
+SH_API int sh_disable_mouse_move(SelectionHook* hook);
+
+/* ---------------------------------------------------------------------------
+ * Keyboard Events
+ * --------------------------------------------------------------------------- */
+
+/**
+ * Register a callback for keyboard events.
+ *
+ * The callback is invoked from native system threads. Data pointers are
+ * valid only for the duration of the callback — Dart MUST copy immediately.
+ *
+ * Must be called before sh_start. Calling after sh_start has undefined
+ * behavior — stop first.
+ *
+ * @param hook Valid SelectionHook instance.
+ * @param callback Function pointer, or NULL to unregister.
+ * @return SH_OK (0) on success.
+ * @thread_safety May be called from any thread before sh_start.
+ */
+SH_API int sh_set_keyboard_callback(SelectionHook* hook, SHKeyboardCallback callback);
+
+/* ---------------------------------------------------------------------------
+ * Configuration
+ * --------------------------------------------------------------------------- */
+
+/**
+ * Apply a full configuration to the hook.
+ *
+ * All fields in SHSelectionConfig are optional — pass 0/0.0 for defaults.
+ * Overwrites any previously set configuration. Must be called before sh_start.
+ *
+ * @param hook Valid SelectionHook instance.
+ * @param config Pointer to configuration struct.
+ * @return SH_OK (0) on success, negative error code on failure.
+ * @thread_safety May be called from any thread before sh_start.
+ */
+SH_API int sh_set_config(SelectionHook* hook, const SHSelectionConfig* config);
+
+/**
+ * Enable or disable passive mode.
+ *
+ * In passive mode, text selection is only detected when the user explicitly
+ * triggers it (e.g., via a system shortcut), rather than automatically on
+ * every mouse-release.
+ *
+ * @param hook Valid SelectionHook instance (must be started).
+ * @param passive 1=enable passive mode, 0=disable.
+ * @return SH_OK (0) on success, negative error code on failure.
+ * @thread_safety Safe from any thread.
+ */
+SH_API int sh_set_passive_mode(SelectionHook* hook, int passive);
+
+/* ---------------------------------------------------------------------------
+ * Clipboard (macOS / Windows only, returns error on Linux)
+ * --------------------------------------------------------------------------- */
+
+/**
+ * Write text to the system clipboard.
+ *
+ * On Linux, this function returns SH_ERR_GENERIC — clipboard write-back
+ * is not supported on Linux via this API.
+ *
+ * @param hook Valid SelectionHook instance.
+ * @param text UTF-8 NUL-terminated string to place on the clipboard.
+ * @return SH_OK (0) on success, negative error code on failure.
+ * @thread_safety Safe from any thread.
+ */
+SH_API int sh_write_clipboard(SelectionHook* hook, const char* text);
+
+/**
+ * Read text from the system clipboard.
+ *
+ * Returns the current clipboard contents as UTF-8, or NULL if the
+ * clipboard is empty or contains non-text data.
+ *
+ * On Linux, this function returns NULL — clipboard read-back is not
+ * supported on Linux via this API.
+ *
+ * The returned string is owned by the library and is valid until the
+ * next call to sh_read_clipboard from the same thread.
+ *
+ * @param hook Valid SelectionHook instance.
+ * @return Clipboard text (library-owned), or NULL.
+ * @thread_safety Safe from any thread.
+ */
+SH_API const char* sh_read_clipboard(SelectionHook* hook);
+
+/* ---------------------------------------------------------------------------
+ * Platform-Specific
+ * --------------------------------------------------------------------------- */
+
+/**
+ * Check if process is trusted for accessibility (macOS only).
+ *
+ * On non-macOS platforms, always returns 1 (trusted).
+ *
+ * @param hook Valid SelectionHook instance.
+ * @return 1 if trusted or non-macOS platform, 0 if not trusted.
+ * @thread_safety Safe from any thread.
+ */
+SH_API int sh_mac_is_process_trusted(SelectionHook* hook);
+
+/**
+ * Try to request accessibility permissions (macOS only, may show dialog).
+ *
+ * On non-macOS platforms, always returns SH_OK.
+ *
+ * @param hook Valid SelectionHook instance.
+ * @return SH_OK (0) on success, negative error code on failure.
+ * @thread_safety Safe from any thread. May present a system dialog — be
+ *                mindful of UI context when calling.
+ */
+SH_API int sh_mac_request_process_trust(SelectionHook* hook);
 
 #ifdef __cplusplus
 }

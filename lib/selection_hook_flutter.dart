@@ -20,7 +20,8 @@ import 'dart:async';
 
 import 'src/selection_hook_impl.dart';
 
-export 'src/selection_hook_impl.dart' show TextSelectionEvent;
+export 'src/selection_hook_impl.dart'
+    show TextSelectionEvent, MouseEvent, KeyboardEvent;
 
 /// Text selection monitoring hook.
 ///
@@ -40,21 +41,55 @@ class SelectionHook {
 
   static SelectionHook? _instance;
 
-  /// The shared singleton instance.
   static SelectionHook get instance => _instance ??= SelectionHook._();
 
   SelectionHookImpl? _impl;
   final StreamController<TextSelectionEvent> _controller =
       StreamController<TextSelectionEvent>.broadcast();
+  StreamController<MouseEvent>? _mouseController;
+  StreamController<KeyboardEvent>? _keyboardController;
 
   bool _isStarted = false;
   bool _isDisposed = false;
+  bool _mouseCbRegistered = false;
+  bool _keyboardCbRegistered = false;
 
   /// Stream of text selection events.
-  ///
-  /// Broadcast stream — multiple listeners allowed. Events are delivered
-  /// on the main isolate.
   Stream<TextSelectionEvent> get onTextSelection => _controller.stream;
+
+  /// Mouse events (down, up, move, wheel).
+  Stream<MouseEvent> get onMouseEvent {
+    _mouseController ??= StreamController<MouseEvent>.broadcast(
+      onListen: _onMouseListen,
+    );
+    return _mouseController!.stream;
+  }
+
+  /// Keyboard events (down, up).
+  Stream<KeyboardEvent> get onKeyboardEvent {
+    _keyboardController ??= StreamController<KeyboardEvent>.broadcast(
+      onListen: _onKeyboardListen,
+    );
+    return _keyboardController!.stream;
+  }
+
+  void _onMouseListen() {
+    if (_isStarted && _impl != null && !_mouseCbRegistered) {
+      _impl!.registerMouseCallback((event) {
+        if (!_mouseController!.isClosed) _mouseController!.add(event);
+      });
+      _mouseCbRegistered = true;
+    }
+  }
+
+  void _onKeyboardListen() {
+    if (_isStarted && _impl != null && !_keyboardCbRegistered) {
+      _impl!.registerKeyboardCallback((event) {
+        if (!_keyboardController!.isClosed) _keyboardController!.add(event);
+      });
+      _keyboardCbRegistered = true;
+    }
+  }
 
   /// Whether the hook is currently monitoring.
   bool get isRunning => _impl?.isRunning ?? false;
@@ -80,6 +115,14 @@ class SelectionHook {
         _controller.add(event);
       }
     });
+    // Register mouse/keyboard callbacks eagerly if listeners already exist.
+    // For listeners added later, onListen will trigger registration lazily.
+    if (_mouseController != null && _mouseController!.hasListener) {
+      _onMouseListen();
+    }
+    if (_keyboardController != null && _keyboardController!.hasListener) {
+      _onKeyboardListen();
+    }
     _impl!.start();
     _isStarted = true;
   }
@@ -102,6 +145,33 @@ class SelectionHook {
     return _impl!.getCurrentSelection();
   }
 
+  /// Apply configuration before [start].
+  void configure({
+    bool debug = false,
+    bool enableMouseMove = false,
+    bool enableClipboard = true,
+    bool selectionPassiveMode = false,
+  }) {
+    _impl?.setConfig(
+      debug: debug,
+      enableMouseMove: enableMouseMove,
+      enableClipboard: enableClipboard,
+      selectionPassiveMode: selectionPassiveMode,
+    );
+  }
+
+  /// Write text to clipboard. macOS/Windows only, returns false on Linux.
+  bool writeClipboard(String text) => _impl?.writeClipboard(text) ?? false;
+
+  /// Read text from clipboard. macOS/Windows only, returns null on Linux.
+  String? readClipboard() => _impl?.readClipboard();
+
+  /// Enable high-CPU mouse move events. Call before [start].
+  void enableMouseMove() => _impl?.enableMouseMove();
+
+  /// Disable mouse move events (default).
+  void disableMouseMove() => _impl?.disableMouseMove();
+
   /// Release all native resources.
   ///
   /// Idempotent — safe to call multiple times. After dispose, the
@@ -110,6 +180,12 @@ class SelectionHook {
     if (_isDisposed) return;
     _isDisposed = true;
     _isStarted = false;
+    _mouseCbRegistered = false;
+    _keyboardCbRegistered = false;
+    _mouseController?.close();
+    _mouseController = null;
+    _keyboardController?.close();
+    _keyboardController = null;
     _impl?.dispose();
     _impl = null;
   }

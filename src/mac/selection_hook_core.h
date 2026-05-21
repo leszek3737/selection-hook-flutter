@@ -12,6 +12,7 @@
 #define SELECTION_HOOK_CORE_H
 
 #include <atomic>
+#include <cstdint>
 #include <future>
 #include <string>
 #include <thread>
@@ -91,6 +92,17 @@ class SelectionHookCore
     static bool isProcessTrusted();
     static bool requestProcessTrust();
 
+    void setMouseCallback(SHMouseCallback callback);
+    void setKeyboardCallback(SHKeyboardCallback callback);
+
+    void setPassiveMode(bool passive);
+    void setClipboardEnabled(bool enabled);
+    void setClipboardMode(FilterMode mode, const std::vector<std::string>& programList);
+    void setGlobalFilterMode(FilterMode mode, const std::vector<std::string>& programList);
+    void setDebugEnabled(bool enabled);
+    void enableMouseMove();
+    void disableMouseMove();
+
   private:
     void startEventThread();
     void stopEventThread();
@@ -124,6 +136,14 @@ class SelectionHookCore
     std::string cached_program;
     SHSelectionData cached_sel_data{};
 
+    // Cached mouse/keyboard event structs — heap-backed (SelectionHookCore is heap
+    // object). Filled inside dispatch_async blocks on the main queue before calling
+    // the corresponding NativeCallable.listener callback. Single-event race is
+    // acceptable for human-speed input (<10 Hz).
+    SHMouseEventData cached_mouse_event{};
+    SHKeyboardEventData cached_keyboard_event{};
+    std::string cached_uni_key;
+
     CFRunLoopRef eventRunLoop{nullptr};
     CFMachPortRef mouseEventTap{nullptr};
     CFMachPortRef keyboardEventTap{nullptr};
@@ -141,6 +161,15 @@ class SelectionHookCore
     std::vector<std::string> clipboard_filter_list;
     FilterMode global_filter_mode{FilterMode::Default};
     std::vector<std::string> global_filter_list;
+
+    void dispatchMouseEvent(const SHMouseEventData &data);
+    void dispatchKeyboardEvent(const SHKeyboardEventData &data);
+
+    SHMouseCallback mouseCallback{nullptr};
+    SHKeyboardCallback keyboardCallback{nullptr};
+
+    bool is_enabled_mouse_move{false};
+    bool debug_enabled{false};
 
     static SelectionHookCore *currentInstance;
 };

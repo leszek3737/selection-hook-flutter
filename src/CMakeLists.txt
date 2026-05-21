@@ -10,10 +10,34 @@ if (APPLE)
     "mac/lib/clipboard.mm"
     "mac/lib/keyboard.mm"
   )
+elseif (LINUX)
+  # TODO(Phase 6): Replace stub with real port.
+  # Copy pattern from mac/selection_hook_core.{h,mm} — strip N-API,
+  # wire CGEventTap → X11/Wayland event loop, use SHSelectionCallback.
+  # Then add real sources:
+  #   bridge/c_api_linux.cc
+  #   linux/selection_hook_core.cc
+  #   linux/lib/keyboard.cc
+  #   linux/lib/utils.cc
+  #   linux/protocols/x11.cc
+  #   linux/protocols/wayland.cc
+  #   linux/protocols/wayland/ext-data-control-v1-protocol.c
+  #   linux/protocols/wayland/wlr-data-control-unstable-v1-protocol.c
+  set(SOURCES "bridge/c_api.cc")
+elseif (WIN32)
+  # TODO(Phase 6): Replace stub with real port.
+  # Copy pattern from mac/selection_hook_core.{h,mm} — strip N-API,
+  # replace Windows hooks with SHSelectionCallback.
+  # Then add real sources:
+  #   bridge/c_api_win.cc
+  #   windows/selection_hook_core.cc
+  #   windows/lib/clipboard.cc
+  #   windows/lib/keyboard.cc
+  #   windows/lib/string_pool.cc
+  #   windows/lib/utils.cc
+  set(SOURCES "bridge/c_api.cc")
 else()
-  set(SOURCES
-    "bridge/c_api.cc"
-  )
+  set(SOURCES "bridge/c_api.cc")
 endif()
 
 add_library(selection_hook_flutter SHARED ${SOURCES})
@@ -36,6 +60,21 @@ if (APPLE)
     "-framework ApplicationServices"
     "-framework Cocoa"
   )
+endif()
+
+if (LINUX)
+  # TODO(Phase 6): Add Linux dependencies when real port is ready.
+  # target_link_libraries(selection_hook_flutter PRIVATE
+  #   X11 Xfixes Xi Xtst
+  #   wayland-client wayland-cursor
+  # )
+endif()
+
+if (WIN32)
+  # TODO(Phase 6): Add Windows dependencies when real port is ready.
+  # target_link_libraries(selection_hook_flutter PRIVATE
+  #   ole32 oleaut32 user32 gdi32
+  # )
 endif()
 
 target_compile_definitions(selection_hook_flutter PUBLIC DART_SHARED_LIB)
