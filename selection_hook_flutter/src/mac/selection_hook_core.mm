@@ -101,7 +101,7 @@ bool SelectionHookCore::start()
         return false;
     }
 
-    if (!AXIsProcessTrusted())
+    if (!requestProcessTrust())
     {
         last_error = "Process is not trusted for accessibility";
         return false;
