@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:selection_hook_flutter/selection_hook_flutter.dart';
@@ -34,11 +36,12 @@ class _HomePageState extends State<HomePage> {
   final _logController = ScrollController();
   final _log = <String>[];
   bool _isRunning = false;
+  StreamSubscription<TextSelectionEvent>? _subscription;
 
   @override
   void initState() {
     super.initState();
-    _hook.onTextSelection.listen((event) {
+    _subscription = _hook.onTextSelection.listen((event) {
       setState(() {
         _log.add(
           '[${DateTime.now().toIso8601String().substring(11, 19)}] '
@@ -57,6 +60,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _subscription?.cancel();
     _hook.dispose();
     _logController.dispose();
     super.dispose();
