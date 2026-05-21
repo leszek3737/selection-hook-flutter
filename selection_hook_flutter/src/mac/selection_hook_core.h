@@ -98,6 +98,10 @@ class SelectionHookCore
 
     bool getSelectedText(NSRunningApplication *frontApp, TextSelectionInfo &selectionInfo);
     bool getTextViaAXAPI(NSRunningApplication *frontApp, TextSelectionInfo &selectionInfo);
+    bool getTextViaClipboard(NSRunningApplication *frontApp, TextSelectionInfo &selectionInfo);
+    bool shouldProcessViaClipboard(const std::string &programName);
+    bool sendCopyKey(pid_t pid);
+    bool isInFilterList(const std::string &programName, const std::vector<std::string> &filterList);
     bool getSelectedTextFromElement(AXUIElementRef element, std::string &text);
     bool setTextRangeCoordinates(AXUIElementRef element, TextSelectionInfo &selectionInfo);
 

@@ -64,6 +64,7 @@ static uint64_t s_lastMouseUpTime = 0;
 static CGPoint s_lastMouseDownPos = CGPointZero;
 static uint64_t s_lastMouseDownTime = 0;
 static bool s_isLastValidClick = false;
+static bool s_isLastMouseDownValidCursor = false;
 
 // Run loop synchronization
 static std::promise<CFRunLoopRef> s_eventRunLoopPromise;
@@ -389,6 +390,7 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
         {
             s_lastMouseDownTime = currentTime;
             s_lastMouseDownPos = currentPos;
+            s_isLastMouseDownValidCursor = IsIBeamCursor([NSCursor currentSystemCursor]);
             clipboard_sequence = GetClipboardSequence();
             break;
         }
@@ -401,6 +403,7 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
                 double distance = sqrt(dx * dx + dy * dy);
 
                 bool isCurrentValidClick = (currentTime - s_lastMouseDownTime) <= DOUBLE_CLICK_TIME_MS;
+                bool isValidCursor = s_isLastMouseDownValidCursor || IsIBeamCursor([NSCursor currentSystemCursor]);
 
                 if ((currentTime - s_lastMouseDownTime) > MAX_DRAG_TIME_MS)
                 {
@@ -408,8 +411,11 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
                 }
                 else if (distance >= MIN_DRAG_DISTANCE)
                 {
-                    shouldDetectSelection = true;
-                    detectionType = SelectionDetectType::Drag;
+                    if (isValidCursor)
+                    {
+                        shouldDetectSelection = true;
+                        detectionType = SelectionDetectType::Drag;
+                    }
                 }
                 else if (s_isLastValidClick && isCurrentValidClick && distance <= DOUBLE_CLICK_MAX_DISTANCE)
                 {
@@ -420,8 +426,11 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
                     if (distance2 <= DOUBLE_CLICK_MAX_DISTANCE &&
                         (s_lastMouseDownTime - s_lastMouseUpTime) <= DOUBLE_CLICK_TIME_MS)
                     {
-                        shouldDetectSelection = true;
-                        detectionType = SelectionDetectType::DoubleClick;
+                        if (isValidCursor)
+                        {
+                            shouldDetectSelection = true;
+                            detectionType = SelectionDetectType::DoubleClick;
+                        }
                     }
                 }
 
@@ -435,8 +444,11 @@ void SelectionHookCore::processMouseEvent(CGEventType type, CGPoint pos, int64_t
 
                     if (isShiftPressed && !isCtrlPressed && !isCmdPressed && !isOptionPressed)
                     {
-                        shouldDetectSelection = true;
-                        detectionType = SelectionDetectType::ShiftClick;
+                        if (isValidCursor)
+                        {
+                            shouldDetectSelection = true;
+                            detectionType = SelectionDetectType::ShiftClick;
+                        }
                     }
                 }
                 s_isLastValidClick = isCurrentValidClick;
@@ -595,6 +607,13 @@ bool SelectionHookCore::getSelectedText(NSRunningApplication *frontApp, TextSele
     if (getTextViaAXAPI(frontApp, selectionInfo))
     {
         selectionInfo.method = SH_METHOD_AXAPI;
+        result = true;
+    }
+
+    if (!result && shouldProcessViaClipboard(selectionInfo.programName) &&
+        getTextViaClipboard(frontApp, selectionInfo))
+    {
+        selectionInfo.method = SH_METHOD_CLIPBOARD;
         result = true;
     }
 
@@ -977,6 +996,152 @@ bool SelectionHookCore::setTextRangeCoordinates(AXUIElementRef element, TextSele
             }
         }
         CFRelease(selectedRangeValue);
+    }
+
+    return false;
+}
+
+bool SelectionHookCore::getTextViaClipboard(NSRunningApplication *frontApp, TextSelectionInfo &selectionInfo)
+{
+    if (frontApp.processIdentifier == running_pid)
+        return false;
+
+    int64_t newClipboardSequence = GetClipboardSequence();
+
+    if (newClipboardSequence != clipboard_sequence)
+    {
+        std::string newContent;
+        if (ReadClipboard(newContent))
+        {
+            selectionInfo.text = newContent;
+            return true;
+        }
+    }
+
+    clipboard_sequence = newClipboardSequence;
+    ClipboardBackup clipboardBackup = BackupClipboard();
+
+    if (!sendCopyKey(frontApp.processIdentifier))
+        return false;
+
+    bool clipboardChanged = false;
+    for (int i = 0; i < 10; i++)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        newClipboardSequence = GetClipboardSequence();
+        if (newClipboardSequence != clipboard_sequence)
+        {
+            clipboardChanged = true;
+            break;
+        }
+    }
+
+    if (!clipboardChanged)
+    {
+        if (clipboardBackup.HasData())
+        {
+            RestoreClipboard(clipboardBackup);
+            clipboard_sequence = GetClipboardSequence();
+        }
+        return false;
+    }
+
+    std::string newContent;
+    if (!ReadClipboard(newContent) || IsTrimmedEmpty(newContent))
+    {
+        if (clipboardBackup.HasData())
+        {
+            RestoreClipboard(clipboardBackup);
+            clipboard_sequence = GetClipboardSequence();
+        }
+        return false;
+    }
+
+    selectionInfo.text = newContent;
+
+    if (clipboardBackup.HasData())
+    {
+        RestoreClipboard(clipboardBackup);
+        clipboard_sequence = GetClipboardSequence();
+    }
+
+    return true;
+}
+
+bool SelectionHookCore::shouldProcessViaClipboard(const std::string &programName)
+{
+    if (!is_enabled_clipboard)
+        return false;
+
+    bool result = false;
+    switch (clipboard_filter_mode)
+    {
+        case FilterMode::Default:
+            result = true;
+            break;
+        case FilterMode::IncludeList:
+            result = isInFilterList(programName, clipboard_filter_list);
+            break;
+        case FilterMode::ExcludeList:
+            result = !isInFilterList(programName, clipboard_filter_list);
+            break;
+    }
+
+    if (!result)
+        return false;
+
+    return true;
+}
+
+bool SelectionHookCore::sendCopyKey(pid_t pid)
+{
+    CGEventRef keyDownEvent = CGEventCreateKeyboardEvent(nullptr, kVK_ANSI_C, true);
+    if (!keyDownEvent) return false;
+
+    CGEventSetFlags(keyDownEvent, kCGEventFlagMaskCommand);
+
+    CGEventRef keyUpEvent = CGEventCreateKeyboardEvent(nullptr, kVK_ANSI_C, false);
+    if (!keyUpEvent)
+    {
+        CFRelease(keyDownEvent);
+        return false;
+    }
+
+    CGEventSetFlags(keyUpEvent, kCGEventFlagMaskCommand);
+
+    if (pid != 0)
+    {
+        CGEventPostToPid(pid, keyDownEvent);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        CGEventPostToPid(pid, keyUpEvent);
+    }
+    else
+    {
+        CGEventPost(kCGHIDEventTap, keyDownEvent);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        CGEventPost(kCGHIDEventTap, keyUpEvent);
+    }
+
+    CFRelease(keyDownEvent);
+    CFRelease(keyUpEvent);
+
+    return true;
+}
+
+bool SelectionHookCore::isInFilterList(const std::string &programName, const std::vector<std::string> &filterList)
+{
+    if (filterList.empty())
+        return false;
+
+    std::string lowerProgramName = programName;
+    std::transform(lowerProgramName.begin(), lowerProgramName.end(), lowerProgramName.begin(), ::tolower);
+
+    for (const auto &filterItem : filterList)
+    {
+        if (lowerProgramName.find(filterItem) != std::string::npos)
+        {
+            return true;
+        }
     }
 
     return false;
