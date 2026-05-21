@@ -1,17 +1,116 @@
-import 'dart:ffi';
-import 'dart:io';
+/// Flutter FFI plugin for cross-platform text selection monitoring.
+///
+/// Monitors text selections across applications on macOS, Windows, and Linux
+/// using native accessibility APIs (AXAPI, UIA, AT-SPI/PRIMARY).
+///
+/// Usage:
+/// ```dart
+/// final hook = SelectionHook.instance;
+/// await hook.start();
+/// hook.onTextSelection.listen((event) {
+///   print('Selected: ${event.text} in ${event.programName}');
+/// });
+/// // ... later
+/// await hook.stop();
+/// ``
 
-const String _libName = 'selection_hook_flutter';
+library;
 
-final DynamicLibrary _dylib = () {
-  if (Platform.isMacOS) {
-    return DynamicLibrary.open('$_libName.framework/$_libName');
+import 'dart:async';
+
+import 'src/selection_hook_impl.dart';
+
+export 'src/selection_hook_impl.dart' show TextSelectionEvent;
+
+/// Text selection monitoring hook.
+///
+/// Singleton — call `SelectionHook.instance` to get the shared instance.
+/// Designed for hot-reload safety: the instance survives widget rebuilds.
+///
+/// Lifecycle:
+/// 1. `await start()` — begin monitoring (registers native callback)
+/// 2. Listen to `onTextSelection` stream
+/// 3. `await stop()` — stop monitoring
+/// 4. `dispose()` — release all native resources (idempotent)
+///
+/// After `dispose()`, the instance can be re-created by calling `start()`
+/// again — a new native hook will be allocated automatically.
+class SelectionHook {
+  SelectionHook._();
+
+  static SelectionHook? _instance;
+
+  /// The shared singleton instance.
+  static SelectionHook get instance => _instance ??= SelectionHook._();
+
+  SelectionHookImpl? _impl;
+  final StreamController<TextSelectionEvent> _controller =
+      StreamController<TextSelectionEvent>.broadcast();
+
+  bool _isStarted = false;
+  bool _isDisposed = false;
+
+  /// Stream of text selection events.
+  ///
+  /// Broadcast stream — multiple listeners allowed. Events are delivered
+  /// on the main isolate.
+  Stream<TextSelectionEvent> get onTextSelection => _controller.stream;
+
+  /// Whether the hook is currently monitoring.
+  bool get isRunning => _impl?.isRunning ?? false;
+
+  /// Start monitoring text selections.
+  ///
+  /// On macOS, may prompt for accessibility permissions on first run.
+  /// Throws [StateError] if permission is not granted.
+  ///
+  /// Safe to call multiple times (no-op if already started).
+  Future<void> start() async {
+    if (_isDisposed) {
+      // Re-create after previous dispose.
+      _isDisposed = false;
+      _instance = SelectionHook._();
+      return _instance!.start();
+    }
+    if (_isStarted) return;
+
+    _impl = await SelectionHookImpl.create();
+    _impl!.registerCallback((event) {
+      if (!_controller.isClosed) {
+        _controller.add(event);
+      }
+    });
+    _impl!.start();
+    _isStarted = true;
   }
-  if (Platform.isLinux) {
-    return DynamicLibrary.open('lib$_libName.so');
+
+  /// Stop monitoring text selections.
+  ///
+  /// Blocks until no native callbacks are in-flight.
+  /// Safe to call multiple times (no-op if not started).
+  Future<void> stop() async {
+    if (!_isStarted || _impl == null) return;
+    _impl!.stop();
+    _isStarted = false;
   }
-  if (Platform.isWindows) {
-    return DynamicLibrary.open('$_libName.dll');
+
+  /// Get the current text selection snapshot.
+  ///
+  /// Returns `null` if no text is selected or the hook is not running.
+  Future<TextSelectionEvent?> getCurrentSelection() async {
+    if (_impl == null) return null;
+    return _impl!.getCurrentSelection();
   }
-  throw UnsupportedError('Unknown platform: ${Platform.operatingSystem}');
-}();
+
+  /// Release all native resources.
+  ///
+  /// Idempotent — safe to call multiple times. After dispose, the
+  /// singleton can be re-created by calling [start] again.
+  void dispose() {
+    if (_isDisposed) return;
+    _isDisposed = true;
+    _isStarted = false;
+    _impl?.dispose();
+    _impl = null;
+  }
+}

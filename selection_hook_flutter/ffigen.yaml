@@ -1,15 +1,13 @@
 # Run with `dart run ffigen --config ffigen.yaml`.
 name: SelectionHookFlutterBindings
 description: |
-  Bindings for `src/selection_hook_flutter.h`.
+  Bindings for `src/bridge/c_api.h`.
 
   Regenerate bindings with `dart run ffigen --config ffigen.yaml`.
 output: 'lib/selection_hook_flutter_bindings_generated.dart'
 headers:
   entry-points:
     - 'src/bridge/c_api.h'
-  include-directories:
-    - 'src/bridge'
   include-directives:
     - 'src/bridge/c_api.h'
 comments:
