@@ -121,7 +121,7 @@ typedef struct {
 typedef enum {
     SH_METHOD_NONE       = 0,
     SH_METHOD_UIA        = 1,
-    /** @deprecated Removed upstream. */
+    /** Removed upstream, kept for alignment. */
     SH_METHOD_FOCUSCTL   = 2,
     SH_METHOD_ACCESSIBLE = 3,
     SH_METHOD_AXAPI      = 11,

@@ -29,10 +29,15 @@ A new Flutter FFI plugin project.
   s.dependency 'FlutterMacOS'
 
   s.platform = :osx, '10.14'
+  s.frameworks = 'ApplicationServices', 'Cocoa'
+  s.libraries = 'c++'
   s.pod_target_xcconfig = { 
     'DEFINES_MODULE' => 'YES',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
-    'CLANG_CXX_LIBRARY' => 'libc++'
+    'CLANG_CXX_LIBRARY' => 'libc++',
+    'MACOSX_DEPLOYMENT_TARGET' => '10.14',
+    'GCC_ENABLE_CPP_EXCEPTIONS' => 'YES',
+    'GCC_ENABLE_CPP_RTTI' => 'YES'
   }
   s.swift_version = '5.0'
 end
