@@ -9,11 +9,16 @@
 
 #include <mutex>
 #include <string>
+#include "../mac/lib/clipboard.h"
 
 struct SelectionHook {
     SelectionHookCore* core = nullptr;
     SHSelectionCallback callback = nullptr;
     std::string last_error;
+    SHMouseCallback mouse_callback = nullptr;
+    SHKeyboardCallback keyboard_callback = nullptr;
+    std::mutex read_clipboard_mutex;
+    std::string read_clipboard_buf;
 };
 
 static std::mutex g_global_error_mutex;
@@ -56,6 +61,8 @@ SH_API int sh_start(SelectionHook* hook) {
     if (hook->core->isRunning()) return SH_ERR_ALREADY_RUNNING;
 
     hook->core->setCallback(hook->callback);
+    if (hook->mouse_callback) hook->core->setMouseCallback(hook->mouse_callback);
+    if (hook->keyboard_callback) hook->core->setKeyboardCallback(hook->keyboard_callback);
 
     if (!hook->core->start()) {
         hook->last_error = hook->core->lastError()
@@ -131,6 +138,73 @@ SH_API const char* sh_last_global_error(void) {
     std::lock_guard<std::mutex> lock(g_global_error_mutex);
     if (g_global_error.empty()) return nullptr;
     return g_global_error.c_str();
+}
+
+SH_API int sh_set_mouse_callback(SelectionHook* hook, SHMouseCallback callback) {
+    if (!hook) return SH_ERR_INVALID_ARG;
+    hook->mouse_callback = callback;
+    if (hook->core) hook->core->setMouseCallback(callback);
+    return SH_OK;
+}
+
+SH_API int sh_set_keyboard_callback(SelectionHook* hook, SHKeyboardCallback callback) {
+    if (!hook) return SH_ERR_INVALID_ARG;
+    hook->keyboard_callback = callback;
+    if (hook->core) hook->core->setKeyboardCallback(callback);
+    return SH_OK;
+}
+
+SH_API int sh_enable_mouse_move(SelectionHook* hook) {
+    if (!hook || !hook->core) return SH_ERR_INVALID_ARG;
+    return SH_OK;
+}
+
+SH_API int sh_disable_mouse_move(SelectionHook* hook) {
+    if (!hook || !hook->core) return SH_ERR_INVALID_ARG;
+    return SH_OK;
+}
+
+SH_API int sh_set_config(SelectionHook* hook, const SHSelectionConfig* config) {
+    if (!hook || !hook->core || !config) return SH_ERR_INVALID_ARG;
+    hook->core->setDebugEnabled(config->debug != 0);
+    hook->core->setClipboardEnabled(config->enable_clipboard != 0);
+    hook->core->setPassiveMode(config->selection_passive_mode != 0);
+    hook->core->setClipboardMode(static_cast<FilterMode>(config->clipboard_mode), {});
+    hook->core->setGlobalFilterMode(static_cast<FilterMode>(config->global_filter_mode), {});
+    return SH_OK;
+}
+
+SH_API int sh_set_passive_mode(SelectionHook* hook, int passive) {
+    if (!hook || !hook->core) return SH_ERR_INVALID_ARG;
+    hook->core->setPassiveMode(passive != 0);
+    return SH_OK;
+}
+
+SH_API int sh_write_clipboard(SelectionHook* hook, const char* text) {
+    if (!hook || !hook->core || !text) return SH_ERR_INVALID_ARG;
+    if (WriteClipboard(std::string(text)))
+        return SH_OK;
+    hook->last_error = "Failed to write clipboard";
+    return SH_ERR_GENERIC;
+}
+
+SH_API const char* sh_read_clipboard(SelectionHook* hook) {
+    if (!hook || !hook->core) return nullptr;
+    std::lock_guard<std::mutex> lock(hook->read_clipboard_mutex);
+    if (!ReadClipboard(hook->read_clipboard_buf))
+        return nullptr;
+    if (hook->read_clipboard_buf.empty()) return nullptr;
+    return hook->read_clipboard_buf.c_str();
+}
+
+SH_API int sh_mac_is_process_trusted(SelectionHook* hook) {
+    if (!hook || !hook->core) return SH_ERR_INVALID_ARG;
+    return SelectionHookCore::isProcessTrusted() ? 1 : 0;
+}
+
+SH_API int sh_mac_request_process_trust(SelectionHook* hook) {
+    if (!hook || !hook->core) return SH_ERR_INVALID_ARG;
+    return SelectionHookCore::requestProcessTrust() ? 1 : 0;
 }
 
 } // extern "C"

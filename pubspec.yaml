@@ -1,7 +1,9 @@
 name: selection_hook_flutter
 description: "Cross-platform text selection monitoring via FFI for Flutter desktop applications."
 version: 0.0.1
-homepage:
+homepage: https://github.com/leszek3737/selection-hook-flutter
+repository: https://github.com/leszek3737/selection-hook-flutter
+issue_tracker: https://github.com/leszek3737/selection-hook-flutter/issues
 
 environment:
   sdk: ^3.12.0
@@ -10,9 +12,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  ffi: ^2.1.3
 
 dev_dependencies:
-  ffi: ^2.1.3
   ffigen: ^20.1.1
   flutter_test:
     sdk: flutter

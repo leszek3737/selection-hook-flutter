@@ -2,8 +2,54 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'package:ffi/ffi.dart';
 
 import '../selection_hook_flutter_bindings_generated.dart';
+
+/// Mouse or scroll wheel event.
+class MouseEvent {
+  final int x;
+  final int y;
+  final int button;
+  final int eventType; // 0=down, 1=up, 2=move, 3=wheel
+  final int flag; // wheel direction: 1=Up/Right, -1=Down/Left
+
+  const MouseEvent({
+    required this.x,
+    required this.y,
+    required this.button,
+    required this.eventType,
+    required this.flag,
+  });
+
+  bool get isMouseDown => eventType == 0;
+  bool get isMouseUp => eventType == 1;
+  bool get isMouseMove => eventType == 2;
+  bool get isMouseWheel => eventType == 3;
+
+  @override
+  String toString() =>
+      'MouseEvent(${['down', 'up', 'move', 'wheel'][eventType]}, '
+      'x=$x, y=$y, button=$button, flag=$flag)';
+}
+
+/// Keyboard event.
+class KeyboardEvent {
+  final String uniKey;
+  final int vkCode;
+  final bool isSys;
+  final int flags;
+
+  const KeyboardEvent({
+    required this.uniKey,
+    required this.vkCode,
+    required this.isSys,
+    required this.flags,
+  });
+
+  @override
+  String toString() => 'KeyboardEvent(key="$uniKey", vk=$vkCode)';
+}
 
 /// Dart-side model for a text selection event.
 class TextSelectionEvent {
@@ -51,6 +97,11 @@ class SelectionHookImpl {
   ffi.NativeCallable<ffi.Void Function(ffi.Pointer<SHSelectionData>)>?
       _nativeCallable;
   bool _isDisposed = false;
+
+  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<SHMouseEventData>)>?
+      _mouseCallable;
+  ffi.NativeCallable<ffi.Void Function(ffi.Pointer<SHKeyboardEventData>)>?
+      _keyboardCallable;
 
   SelectionHookImpl._(this._bindings, this._hook);
 
@@ -126,6 +177,63 @@ class SelectionHookImpl {
     _nativeCallable = nativeCallable;
   }
 
+  /// Register mouse event callback. Must be called before [start].
+  void registerMouseCallback(void Function(MouseEvent event) onEvent) {
+    if (_isDisposed) throw StateError('SelectionHookImpl already disposed');
+
+    final nativeCallable =
+        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<SHMouseEventData>)>
+            .listener((ffi.Pointer<SHMouseEventData> data) {
+      final ref = data.ref;
+      onEvent(MouseEvent(
+        x: ref.x,
+        y: ref.y,
+        button: ref.button,
+        eventType: ref.event_type,
+        flag: ref.flag,
+      ));
+    });
+
+    final result = _bindings.sh_set_mouse_callback(
+      _hook,
+      nativeCallable.nativeFunction,
+    );
+    if (result != 0) {
+      nativeCallable.close();
+      throw StateError('sh_set_mouse_callback failed: $result');
+    }
+    _mouseCallable?.close();
+    _mouseCallable = nativeCallable;
+  }
+
+  /// Register keyboard event callback. Must be called before [start].
+  void registerKeyboardCallback(void Function(KeyboardEvent event) onEvent) {
+    if (_isDisposed) throw StateError('SelectionHookImpl already disposed');
+
+    final nativeCallable =
+        ffi.NativeCallable<ffi.Void Function(ffi.Pointer<SHKeyboardEventData>)>
+            .listener((ffi.Pointer<SHKeyboardEventData> data) {
+      final ref = data.ref;
+      onEvent(KeyboardEvent(
+        uniKey: ref.uni_key.toDartString(),
+        vkCode: ref.vk_code,
+        isSys: ref.sys != 0,
+        flags: ref.flags,
+      ));
+    });
+
+    final result = _bindings.sh_set_keyboard_callback(
+      _hook,
+      nativeCallable.nativeFunction,
+    );
+    if (result != 0) {
+      nativeCallable.close();
+      throw StateError('sh_set_keyboard_callback failed: $result');
+    }
+    _keyboardCallable?.close();
+    _keyboardCallable = nativeCallable;
+  }
+
   /// Start monitoring text selections.
   ///
   /// Returns `true` on success. On macOS, may prompt for accessibility
@@ -190,6 +298,72 @@ class SelectionHookImpl {
     return event;
   }
 
+  /// Apply configuration. Call before [start].
+  void setConfig({
+    bool debug = false,
+    bool enableMouseMove = false,
+    bool enableClipboard = true,
+    bool selectionPassiveMode = false,
+  }) {
+    if (_isDisposed) throw StateError('SelectionHookImpl already disposed');
+    final config = calloc<SHSelectionConfig>(1);
+    config.ref
+      ..debug = debug ? 1 : 0
+      ..enable_mouse_move = enableMouseMove ? 1 : 0
+      ..enable_clipboard = enableClipboard ? 1 : 0
+      ..selection_passive_mode = selectionPassiveMode ? 1 : 0
+      ..clipboard_mode = 0
+      ..global_filter_mode = 0;
+    _bindings.sh_set_config(_hook, config);
+    calloc.free(config);
+  }
+
+  /// Write text to clipboard. macOS/Windows only.
+  bool writeClipboard(String text) {
+    if (_isDisposed) return false;
+    final bytes = utf8.encode(text);
+    final cStr = calloc<ffi.Char>(bytes.length + 1);
+    for (var i = 0; i < bytes.length; i++) {
+      cStr[i] = bytes[i];
+    }
+    cStr[bytes.length] = 0;
+    final result = _bindings.sh_write_clipboard(_hook, cStr.cast());
+    calloc.free(cStr);
+    return result == SH_OK;
+  }
+
+  /// Read text from clipboard. macOS/Windows only.
+  String? readClipboard() {
+    if (_isDisposed) return null;
+    final ptr = _bindings.sh_read_clipboard(_hook);
+    if (ptr == ffi.nullptr) return null;
+    return ptr.toDartString();
+  }
+
+  /// Enable mouse move events (high CPU). Call before [start].
+  void enableMouseMove() {
+    if (_isDisposed) return;
+    _bindings.sh_enable_mouse_move(_hook);
+  }
+
+  /// Disable mouse move events.
+  void disableMouseMove() {
+    if (_isDisposed) return;
+    _bindings.sh_disable_mouse_move(_hook);
+  }
+
+  /// Check accessibility trust (macOS only).
+  bool get isProcessTrusted {
+    if (_isDisposed) return false;
+    return _bindings.sh_mac_is_process_trusted(_hook) == 1;
+  }
+
+  /// Request accessibility permissions (macOS only, may show dialog).
+  bool requestProcessTrust() {
+    if (_isDisposed) return false;
+    return _bindings.sh_mac_request_process_trust(_hook) == 1;
+  }
+
   /// Stop, close NativeCallable, destroy native hook.
   ///
   /// Idempotent — safe to call multiple times.
@@ -203,6 +377,11 @@ class SelectionHookImpl {
     // Close the NativeCallable — no more callbacks will fire.
     _nativeCallable?.close();
     _nativeCallable = null;
+
+    _mouseCallable?.close();
+    _mouseCallable = null;
+    _keyboardCallable?.close();
+    _keyboardCallable = null;
 
     // Destroy native resources.
     _bindings.sh_destroy(_hook);

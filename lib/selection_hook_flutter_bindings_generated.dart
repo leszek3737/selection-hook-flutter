@@ -252,6 +252,246 @@ class SelectionHookFlutterBindings {
       );
   late final _sh_last_global_error = _sh_last_global_errorPtr
       .asFunction<ffi.Pointer<ffi.Char> Function()>();
+
+  /// Register a callback for mouse/wheel events.
+  ///
+  /// The callback is invoked from native system threads. Data pointers are
+  /// valid only for the duration of the callback — Dart MUST copy immediately.
+  ///
+  /// Must be called before sh_start. Calling after sh_start has undefined
+  /// behavior — stop first.
+  ///
+  /// @param hook Valid SelectionHook instance.
+  /// @param callback Function pointer, or NULL to unregister.
+  /// @return SH_OK (0) on success.
+  /// @thread_safety May be called from any thread before sh_start.
+  int sh_set_mouse_callback(
+    ffi.Pointer<SelectionHook> hook,
+    SHMouseCallback callback,
+  ) {
+    return _sh_set_mouse_callback(hook, callback);
+  }
+
+  late final _sh_set_mouse_callbackPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(ffi.Pointer<SelectionHook>, SHMouseCallback)
+        >
+      >('sh_set_mouse_callback');
+  late final _sh_set_mouse_callback = _sh_set_mouse_callbackPtr
+      .asFunction<int Function(ffi.Pointer<SelectionHook>, SHMouseCallback)>();
+
+  /// Enable mouse-move events.
+  ///
+  /// Mouse-move events are high-CPU on some platforms. Only enable if your
+  /// application needs per-pixel mouse tracking.
+  ///
+  /// @param hook Valid SelectionHook instance (must be started).
+  /// @return SH_OK (0) on success, negative error code on failure.
+  /// @thread_safety Safe from any thread.
+  int sh_enable_mouse_move(ffi.Pointer<SelectionHook> hook) {
+    return _sh_enable_mouse_move(hook);
+  }
+
+  late final _sh_enable_mouse_movePtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<SelectionHook>)>>(
+        'sh_enable_mouse_move',
+      );
+  late final _sh_enable_mouse_move = _sh_enable_mouse_movePtr
+      .asFunction<int Function(ffi.Pointer<SelectionHook>)>();
+
+  /// Disable mouse-move events.
+  ///
+  /// Stops receiving mouse-move callbacks. Mouse-down, mouse-up, and
+  /// mouse-wheel events are unaffected.
+  ///
+  /// @param hook Valid SelectionHook instance (must be started).
+  /// @return SH_OK (0) on success, negative error code on failure.
+  /// @thread_safety Safe from any thread.
+  int sh_disable_mouse_move(ffi.Pointer<SelectionHook> hook) {
+    return _sh_disable_mouse_move(hook);
+  }
+
+  late final _sh_disable_mouse_movePtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<SelectionHook>)>>(
+        'sh_disable_mouse_move',
+      );
+  late final _sh_disable_mouse_move = _sh_disable_mouse_movePtr
+      .asFunction<int Function(ffi.Pointer<SelectionHook>)>();
+
+  /// Register a callback for keyboard events.
+  ///
+  /// The callback is invoked from native system threads. Data pointers are
+  /// valid only for the duration of the callback — Dart MUST copy immediately.
+  ///
+  /// Must be called before sh_start. Calling after sh_start has undefined
+  /// behavior — stop first.
+  ///
+  /// @param hook Valid SelectionHook instance.
+  /// @param callback Function pointer, or NULL to unregister.
+  /// @return SH_OK (0) on success.
+  /// @thread_safety May be called from any thread before sh_start.
+  int sh_set_keyboard_callback(
+    ffi.Pointer<SelectionHook> hook,
+    SHKeyboardCallback callback,
+  ) {
+    return _sh_set_keyboard_callback(hook, callback);
+  }
+
+  late final _sh_set_keyboard_callbackPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(ffi.Pointer<SelectionHook>, SHKeyboardCallback)
+        >
+      >('sh_set_keyboard_callback');
+  late final _sh_set_keyboard_callback = _sh_set_keyboard_callbackPtr
+      .asFunction<
+        int Function(ffi.Pointer<SelectionHook>, SHKeyboardCallback)
+      >();
+
+  /// Apply a full configuration to the hook.
+  ///
+  /// All fields in SHSelectionConfig are optional — pass 0/0.0 for defaults.
+  /// Overwrites any previously set configuration. Must be called before sh_start.
+  ///
+  /// @param hook Valid SelectionHook instance.
+  /// @param config Pointer to configuration struct.
+  /// @return SH_OK (0) on success, negative error code on failure.
+  /// @thread_safety May be called from any thread before sh_start.
+  int sh_set_config(
+    ffi.Pointer<SelectionHook> hook,
+    ffi.Pointer<SHSelectionConfig> config,
+  ) {
+    return _sh_set_config(hook, config);
+  }
+
+  late final _sh_set_configPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(
+            ffi.Pointer<SelectionHook>,
+            ffi.Pointer<SHSelectionConfig>,
+          )
+        >
+      >('sh_set_config');
+  late final _sh_set_config = _sh_set_configPtr
+      .asFunction<
+        int Function(ffi.Pointer<SelectionHook>, ffi.Pointer<SHSelectionConfig>)
+      >();
+
+  /// Enable or disable passive mode.
+  ///
+  /// In passive mode, text selection is only detected when the user explicitly
+  /// triggers it (e.g., via a system shortcut), rather than automatically on
+  /// every mouse-release.
+  ///
+  /// @param hook Valid SelectionHook instance (must be started).
+  /// @param passive 1=enable passive mode, 0=disable.
+  /// @return SH_OK (0) on success, negative error code on failure.
+  /// @thread_safety Safe from any thread.
+  int sh_set_passive_mode(ffi.Pointer<SelectionHook> hook, int passive) {
+    return _sh_set_passive_mode(hook, passive);
+  }
+
+  late final _sh_set_passive_modePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(ffi.Pointer<SelectionHook>, ffi.Int)
+        >
+      >('sh_set_passive_mode');
+  late final _sh_set_passive_mode = _sh_set_passive_modePtr
+      .asFunction<int Function(ffi.Pointer<SelectionHook>, int)>();
+
+  /// Write text to the system clipboard.
+  ///
+  /// On Linux, this function returns SH_ERR_GENERIC — clipboard write-back
+  /// is not supported on Linux via this API.
+  ///
+  /// @param hook Valid SelectionHook instance.
+  /// @param text UTF-8 NUL-terminated string to place on the clipboard.
+  /// @return SH_OK (0) on success, negative error code on failure.
+  /// @thread_safety Safe from any thread.
+  int sh_write_clipboard(
+    ffi.Pointer<SelectionHook> hook,
+    ffi.Pointer<ffi.Char> text,
+  ) {
+    return _sh_write_clipboard(hook, text);
+  }
+
+  late final _sh_write_clipboardPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(ffi.Pointer<SelectionHook>, ffi.Pointer<ffi.Char>)
+        >
+      >('sh_write_clipboard');
+  late final _sh_write_clipboard = _sh_write_clipboardPtr
+      .asFunction<
+        int Function(ffi.Pointer<SelectionHook>, ffi.Pointer<ffi.Char>)
+      >();
+
+  /// Read text from the system clipboard.
+  ///
+  /// Returns the current clipboard contents as UTF-8, or NULL if the
+  /// clipboard is empty or contains non-text data.
+  ///
+  /// On Linux, this function returns NULL — clipboard read-back is not
+  /// supported on Linux via this API.
+  ///
+  /// The returned string is owned by the library and is valid until the
+  /// next call to sh_read_clipboard from the same thread.
+  ///
+  /// @param hook Valid SelectionHook instance.
+  /// @return Clipboard text (library-owned), or NULL.
+  /// @thread_safety Safe from any thread.
+  ffi.Pointer<ffi.Char> sh_read_clipboard(ffi.Pointer<SelectionHook> hook) {
+    return _sh_read_clipboard(hook);
+  }
+
+  late final _sh_read_clipboardPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Pointer<ffi.Char> Function(ffi.Pointer<SelectionHook>)
+        >
+      >('sh_read_clipboard');
+  late final _sh_read_clipboard = _sh_read_clipboardPtr
+      .asFunction<ffi.Pointer<ffi.Char> Function(ffi.Pointer<SelectionHook>)>();
+
+  /// Check if process is trusted for accessibility (macOS only).
+  ///
+  /// On non-macOS platforms, always returns 1 (trusted).
+  ///
+  /// @param hook Valid SelectionHook instance.
+  /// @return 1 if trusted or non-macOS platform, 0 if not trusted.
+  /// @thread_safety Safe from any thread.
+  int sh_mac_is_process_trusted(ffi.Pointer<SelectionHook> hook) {
+    return _sh_mac_is_process_trusted(hook);
+  }
+
+  late final _sh_mac_is_process_trustedPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<SelectionHook>)>>(
+        'sh_mac_is_process_trusted',
+      );
+  late final _sh_mac_is_process_trusted = _sh_mac_is_process_trustedPtr
+      .asFunction<int Function(ffi.Pointer<SelectionHook>)>();
+
+  /// Try to request accessibility permissions (macOS only, may show dialog).
+  ///
+  /// On non-macOS platforms, always returns SH_OK.
+  ///
+  /// @param hook Valid SelectionHook instance.
+  /// @return SH_OK (0) on success, negative error code on failure.
+  /// @thread_safety Safe from any thread. May present a system dialog — be
+  /// mindful of UI context when calling.
+  int sh_mac_request_process_trust(ffi.Pointer<SelectionHook> hook) {
+    return _sh_mac_request_process_trust(hook);
+  }
+
+  late final _sh_mac_request_process_trustPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<SelectionHook>)>>(
+        'sh_mac_request_process_trust',
+      );
+  late final _sh_mac_request_process_trust = _sh_mac_request_process_trustPtr
+      .asFunction<int Function(ffi.Pointer<SelectionHook>)>();
 }
 
 final class SelectionHook extends ffi.Opaque {}
@@ -380,6 +620,97 @@ typedef DartSHSelectionCallbackFunction =
 /// @param data Selection data. Lifetime = callback duration. Copy immediately.
 typedef SHSelectionCallback =
     ffi.Pointer<ffi.NativeFunction<SHSelectionCallbackFunction>>;
+
+/// Mouse/wheel event data.
+///
+/// event_type: 0=mouse-down, 1=mouse-up, 2=mouse-move, 3=mouse-wheel
+/// button: None=-1, Left=0, Middle=1, Right=2, Back=3, Forward=4, Unknown=99.
+/// For mouse-wheel: 0=Vertical, 1=Horizontal.
+/// flag: wheel direction (1=Up/Right, -1=Down/Left; 0 for non-wheel events).
+///
+/// Sentinel INVALID_COORDINATE (-99999) applies to x/y on Linux Wayland.
+final class SHMouseEventData extends ffi.Struct {
+  @ffi.Int32()
+  external int x;
+
+  @ffi.Int32()
+  external int y;
+
+  @ffi.Int32()
+  external int button;
+
+  @ffi.Int32()
+  external int event_type;
+
+  @ffi.Int32()
+  external int flag;
+}
+
+/// Keyboard event data.
+///
+/// uni_key: MDN KeyboardEvent.key value (UTF-8, NUL-terminated).
+/// Library-owned, valid only during callback.
+/// vk_code: Platform-specific virtual key code.
+/// Windows=VK_*, macOS=kVK_*, Linux=KEY_* from linux/input-event-codes.h.
+/// sys: Non-zero if Alt/Ctrl/Win/Cmd/Fn modifier pressed simultaneously.
+/// flags: Additional platform-specific flags (Linux: modifier bitmask).
+final class SHKeyboardEventData extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> uni_key;
+
+  @ffi.Int32()
+  external int vk_code;
+
+  @ffi.Int32()
+  external int sys;
+
+  @ffi.Int32()
+  external int flags;
+}
+
+typedef SHMouseCallbackFunction =
+    ffi.Void Function(ffi.Pointer<SHMouseEventData> data);
+typedef DartSHMouseCallbackFunction =
+    void Function(ffi.Pointer<SHMouseEventData> data);
+
+/// Mouse event callback. data valid only during callback.
+typedef SHMouseCallback =
+    ffi.Pointer<ffi.NativeFunction<SHMouseCallbackFunction>>;
+typedef SHKeyboardCallbackFunction =
+    ffi.Void Function(ffi.Pointer<SHKeyboardEventData> data);
+typedef DartSHKeyboardCallbackFunction =
+    void Function(ffi.Pointer<SHKeyboardEventData> data);
+
+/// Keyboard event callback. data valid only during callback.
+typedef SHKeyboardCallback =
+    ffi.Pointer<ffi.NativeFunction<SHKeyboardCallbackFunction>>;
+
+/// Configuration for text selection monitoring.
+/// All fields are optional — pass 0 for defaults.
+final class SHSelectionConfig extends ffi.Struct {
+  /// 1=enable diagnostic logging
+  @ffi.Int32()
+  external int debug;
+
+  /// 1=enable high-CPU mouse-move events
+  @ffi.Int32()
+  external int enable_mouse_move;
+
+  /// 1=enable clipboard fallback (default: 1)
+  @ffi.Int32()
+  external int enable_clipboard;
+
+  /// 1=require manual trigger for selection
+  @ffi.Int32()
+  external int selection_passive_mode;
+
+  /// FilterMode: 0=Default, 1=IncludeList, 2=ExcludeList
+  @ffi.Int32()
+  external int clipboard_mode;
+
+  /// FilterMode for global program filter
+  @ffi.Int32()
+  external int global_filter_mode;
+}
 
 const int SH_OK = 0;
 

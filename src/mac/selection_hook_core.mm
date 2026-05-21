@@ -170,6 +170,53 @@ bool SelectionHookCore::requestProcessTrust()
     return isTrusted;
 }
 
+void SelectionHookCore::setMouseCallback(SHMouseCallback callback)
+{
+    mouseCallback = callback;
+}
+
+void SelectionHookCore::setKeyboardCallback(SHKeyboardCallback callback)
+{
+    keyboardCallback = callback;
+}
+
+void SelectionHookCore::setPassiveMode(bool passive)
+{
+    is_selection_passive_mode = passive;
+}
+
+void SelectionHookCore::setClipboardEnabled(bool enabled)
+{
+    is_enabled_clipboard = enabled;
+}
+
+void SelectionHookCore::setClipboardMode(FilterMode mode, const std::vector<std::string>& programList)
+{
+    clipboard_filter_mode = mode;
+    clipboard_filter_list = programList;
+}
+
+void SelectionHookCore::setGlobalFilterMode(FilterMode mode, const std::vector<std::string>& programList)
+{
+    global_filter_mode = mode;
+    global_filter_list = programList;
+}
+
+void SelectionHookCore::setDebugEnabled(bool enabled)
+{
+    debug_enabled = enabled;
+}
+
+void SelectionHookCore::enableMouseMove()
+{
+    is_enabled_mouse_move = true;
+}
+
+void SelectionHookCore::disableMouseMove()
+{
+    is_enabled_mouse_move = false;
+}
+
 void SelectionHookCore::startEventThread()
 {
     if (event_thread.joinable())
@@ -289,7 +336,7 @@ CGEventRef SelectionHookCore::mouseEventCallback(CGEventTapProxy proxy, CGEventT
         return event;
     }
 
-    if (type == kCGEventMouseMoved)
+    if (type == kCGEventMouseMoved && !hook->is_enabled_mouse_move)
         return event;
 
     int64_t button = -1;
@@ -340,11 +387,34 @@ CGEventRef SelectionHookCore::mouseEventCallback(CGEventTapProxy proxy, CGEventT
     CGPoint pos = CGEventGetLocation(event);
     CGEventFlags flags = CGEventGetFlags(event);
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Guard against use-after-free if sh_destroy runs before this block.
         if (!hook || !hook->running)
             return;
         hook->processMouseEvent(type, pos, button, flag, flags);
     });
+
+    if (hook->mouseCallback) {
+        SHMouseEventData md = {};
+        md.x = static_cast<int32_t>(pos.x);
+        md.y = static_cast<int32_t>(pos.y);
+        md.button = static_cast<int32_t>(button);
+        md.flag = static_cast<int32_t>(flag);
+        switch (type) {
+            case kCGEventLeftMouseDown:
+            case kCGEventRightMouseDown:
+            case kCGEventOtherMouseDown:
+                md.event_type = 0; break;
+            case kCGEventLeftMouseUp:
+            case kCGEventRightMouseUp:
+            case kCGEventOtherMouseUp:
+                md.event_type = 1; break;
+            case kCGEventMouseMoved:
+                md.event_type = 2; break;
+            case kCGEventScrollWheel:
+                md.event_type = 3; break;
+            default: break;
+        }
+        hook->dispatchMouseEvent(md);
+    }
 
     return event;
 }
@@ -360,6 +430,23 @@ CGEventRef SelectionHookCore::keyboardEventCallback(CGEventTapProxy proxy, CGEve
     {
         CGEventTapEnable(hook->keyboardEventTap, true);
         return event;
+    }
+
+    if (hook->keyboardCallback)
+    {
+        CGKeyCode keyCode = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+        CGEventFlags flags = CGEventGetFlags(event);
+        bool isSysKey = (flags & (kCGEventFlagMaskCommand | kCGEventFlagMaskControl |
+                                  kCGEventFlagMaskAlternate | kCGEventFlagMaskSecondaryFn)) != 0;
+
+        std::string uniKey = convertKeyCodeToUniKey(keyCode, flags);
+
+        SHKeyboardEventData kd = {};
+        kd.uni_key = uniKey.c_str();
+        kd.vk_code = static_cast<int32_t>(keyCode);
+        kd.sys = isSysKey ? 1 : 0;
+        kd.flags = static_cast<int32_t>(flags);
+        hook->dispatchKeyboardEvent(kd);
     }
 
     return event;
@@ -556,6 +643,18 @@ void SelectionHookCore::fillSHSelectionData(const TextSelectionInfo &info, SHSel
     out.method = static_cast<int32_t>(info.method);
     out.pos_level = static_cast<int32_t>(info.posLevel);
     out.is_fullscreen = info.isFullscreen ? 1 : 0;
+}
+
+void SelectionHookCore::dispatchMouseEvent(const SHMouseEventData &data)
+{
+    if (!mouseCallback || !running) return;
+    mouseCallback(&data);
+}
+
+void SelectionHookCore::dispatchKeyboardEvent(const SHKeyboardEventData &data)
+{
+    if (!keyboardCallback || !running) return;
+    keyboardCallback(&data);
 }
 
 bool SelectionHookCore::getSelectedText(NSRunningApplication *frontApp, TextSelectionInfo &selectionInfo)

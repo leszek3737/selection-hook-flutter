@@ -20,7 +20,8 @@ import 'dart:async';
 
 import 'src/selection_hook_impl.dart';
 
-export 'src/selection_hook_impl.dart' show TextSelectionEvent;
+export 'src/selection_hook_impl.dart'
+    show TextSelectionEvent, MouseEvent, KeyboardEvent;
 
 /// Text selection monitoring hook.
 ///
@@ -46,6 +47,8 @@ class SelectionHook {
   SelectionHookImpl? _impl;
   final StreamController<TextSelectionEvent> _controller =
       StreamController<TextSelectionEvent>.broadcast();
+  StreamController<MouseEvent>? _mouseController;
+  StreamController<KeyboardEvent>? _keyboardController;
 
   bool _isStarted = false;
   bool _isDisposed = false;
@@ -55,6 +58,18 @@ class SelectionHook {
   /// Broadcast stream — multiple listeners allowed. Events are delivered
   /// on the main isolate.
   Stream<TextSelectionEvent> get onTextSelection => _controller.stream;
+
+  /// Mouse events (down, up, move, wheel).
+  Stream<MouseEvent> get onMouseEvent {
+    _mouseController ??= StreamController<MouseEvent>.broadcast();
+    return _mouseController!.stream;
+  }
+
+  /// Keyboard events (down, up).
+  Stream<KeyboardEvent> get onKeyboardEvent {
+    _keyboardController ??= StreamController<KeyboardEvent>.broadcast();
+    return _keyboardController!.stream;
+  }
 
   /// Whether the hook is currently monitoring.
   bool get isRunning => _impl?.isRunning ?? false;
@@ -80,6 +95,16 @@ class SelectionHook {
         _controller.add(event);
       }
     });
+    if (_mouseController != null && _mouseController!.hasListener) {
+      _impl!.registerMouseCallback((event) {
+        if (!_mouseController!.isClosed) _mouseController!.add(event);
+      });
+    }
+    if (_keyboardController != null && _keyboardController!.hasListener) {
+      _impl!.registerKeyboardCallback((event) {
+        if (!_keyboardController!.isClosed) _keyboardController!.add(event);
+      });
+    }
     _impl!.start();
     _isStarted = true;
   }
@@ -102,6 +127,33 @@ class SelectionHook {
     return _impl!.getCurrentSelection();
   }
 
+  /// Apply configuration before [start].
+  void configure({
+    bool debug = false,
+    bool enableMouseMove = false,
+    bool enableClipboard = true,
+    bool selectionPassiveMode = false,
+  }) {
+    _impl?.setConfig(
+      debug: debug,
+      enableMouseMove: enableMouseMove,
+      enableClipboard: enableClipboard,
+      selectionPassiveMode: selectionPassiveMode,
+    );
+  }
+
+  /// Write text to clipboard. macOS/Windows only, returns false on Linux.
+  bool writeClipboard(String text) => _impl?.writeClipboard(text) ?? false;
+
+  /// Read text from clipboard. macOS/Windows only, returns null on Linux.
+  String? readClipboard() => _impl?.readClipboard();
+
+  /// Enable high-CPU mouse move events. Call before [start].
+  void enableMouseMove() => _impl?.enableMouseMove();
+
+  /// Disable mouse move events (default).
+  void disableMouseMove() => _impl?.disableMouseMove();
+
   /// Release all native resources.
   ///
   /// Idempotent — safe to call multiple times. After dispose, the
@@ -110,6 +162,10 @@ class SelectionHook {
     if (_isDisposed) return;
     _isDisposed = true;
     _isStarted = false;
+    _mouseController?.close();
+    _mouseController = null;
+    _keyboardController?.close();
+    _keyboardController = null;
     _impl?.dispose();
     _impl = null;
   }

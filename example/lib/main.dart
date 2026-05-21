@@ -38,6 +38,11 @@ class _HomePageState extends State<HomePage> {
   bool _isRunning = false;
   StreamSubscription<TextSelectionEvent>? _subscription;
 
+  bool _showMouseEvents = false;
+  bool _showKeyboardEvents = false;
+  StreamSubscription<MouseEvent>? _mouseSub;
+  StreamSubscription<KeyboardEvent>? _keyboardSub;
+
   @override
   void initState() {
     super.initState();
@@ -45,6 +50,7 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _log.add(
           '[${DateTime.now().toIso8601String().substring(11, 19)}] '
+          '[TEXT] '
           '"${event.text.length > 60 ? '${event.text.substring(0, 60)}...' : event.text}" '
           'in ${event.programName}',
         );
@@ -61,6 +67,8 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _subscription?.cancel();
+    _mouseSub?.cancel();
+    _keyboardSub?.cancel();
     _hook.dispose();
     _logController.dispose();
     super.dispose();
@@ -68,6 +76,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _toggle() async {
     if (_isRunning) {
+      _mouseSub?.cancel();
+      _keyboardSub?.cancel();
+      _mouseSub = null;
+      _keyboardSub = null;
       await _hook.stop();
       setState(() => _isRunning = false);
       _addLog('Stopped');
@@ -76,6 +88,12 @@ class _HomePageState extends State<HomePage> {
         await _hook.start();
         setState(() => _isRunning = true);
         _addLog('Started — select text in other apps');
+        if (_showMouseEvents) {
+          _mouseSub = _hook.onMouseEvent.listen(_onMouse);
+        }
+        if (_showKeyboardEvents) {
+          _keyboardSub = _hook.onKeyboardEvent.listen(_onKey);
+        }
       } on StateError catch (e) {
         _addLog('Error: $e');
       }
@@ -86,6 +104,27 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _log.add('[${DateTime.now().toIso8601String().substring(11, 19)}] $msg');
     });
+  }
+
+  void _onMouse(MouseEvent e) {
+    _log.add(
+      '[${DateTime.now().toIso8601String().substring(11, 19)}] '
+      '[MOUSE] ${e.toString()}',
+    );
+    setState(() {});
+  }
+
+  void _onKey(KeyboardEvent e) {
+    _log.add(
+      '[${DateTime.now().toIso8601String().substring(11, 19)}] '
+      '[KEY] key="${e.uniKey}" vk=${e.vkCode}',
+    );
+    setState(() {});
+  }
+
+  void _readClipboard() {
+    final text = _hook.readClipboard();
+    _addLog(text != null ? '[CLIP] "$text"' : '[CLIP] empty');
   }
 
   @override
@@ -110,21 +149,66 @@ class _HomePageState extends State<HomePage> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _toggle,
-                    icon: Icon(_isRunning ? Icons.stop : Icons.play_arrow),
-                    label: Text(_isRunning ? 'Stop' : 'Start'),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _toggle,
+                        icon: Icon(_isRunning ? Icons.stop : Icons.play_arrow),
+                        label: Text(_isRunning ? 'Stop' : 'Start'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    IconButton(
+                      icon: const Icon(Icons.content_paste),
+                      tooltip: 'Read Clipboard',
+                      onPressed: _readClipboard,
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton(
+                      onPressed: () {
+                        setState(() => _log.clear());
+                      },
+                      child: const Text('Clear'),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                OutlinedButton(
-                  onPressed: () {
-                    setState(() => _log.clear());
-                  },
-                  child: const Text('Clear'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    CheckboxMenuButton(
+                      value: _showMouseEvents,
+                      onChanged: (v) {
+                        setState(() => _showMouseEvents = v!);
+                        if (_isRunning) {
+                          if (_showMouseEvents && _mouseSub == null) {
+                            _mouseSub = _hook.onMouseEvent.listen(_onMouse);
+                          } else if (!_showMouseEvents) {
+                            _mouseSub?.cancel();
+                            _mouseSub = null;
+                          }
+                        }
+                      },
+                      child: const Text('Mouse events'),
+                    ),
+                    CheckboxMenuButton(
+                      value: _showKeyboardEvents,
+                      onChanged: (v) {
+                        setState(() => _showKeyboardEvents = v!);
+                        if (_isRunning) {
+                          if (_showKeyboardEvents && _keyboardSub == null) {
+                            _keyboardSub = _hook.onKeyboardEvent.listen(_onKey);
+                          } else if (!_showKeyboardEvents) {
+                            _keyboardSub?.cancel();
+                            _keyboardSub = null;
+                          }
+                        }
+                      },
+                      child: const Text('Keyboard events'),
+                    ),
+                  ],
                 ),
               ],
             ),
