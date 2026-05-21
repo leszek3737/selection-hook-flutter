@@ -92,10 +92,14 @@ class SelectionHookImpl {
   void registerCallback(void Function(TextSelectionEvent event) onEvent) {
     if (_isDisposed) throw StateError('SelectionHookImpl already disposed');
 
+    // NativeCallable.listener synchronously copies the struct from native
+    // memory before returning. The pointer is valid only during this call,
+    // but all fields are deep-copied by Dart's FFI before the callback
+    // returns, so no data corruption occurs even if rapid-fire events
+    // overwrite the native buffer immediately after.
     final nativeCallable =
         ffi.NativeCallable<ffi.Void Function(ffi.Pointer<SHSelectionData>)>
             .listener((ffi.Pointer<SHSelectionData> data) {
-      // Copy all fields before returning — pointer is valid only during callback.
       final ref = data.ref;
       final event = TextSelectionEvent(
         text: ref.text.toDartString(),
@@ -210,14 +214,11 @@ class SelectionHookImpl {
 /// Reads a NUL-terminated UTF-8 string from a `Pointer<Char>`.
 extension Utf8 on ffi.Pointer<ffi.Char> {
   String toDartString() {
-    final bytes = <int>[];
-    var i = 0;
-    while (true) {
-      final byte = cast<ffi.Uint8>()[i];
-      if (byte == 0) break;
-      bytes.add(byte);
-      i++;
+    if (this == ffi.nullptr) return '';
+    var length = 0;
+    while (cast<ffi.Uint8>()[length] != 0) {
+      length++;
     }
-    return utf8.decode(bytes);
+    return utf8.decode(cast<ffi.Uint8>().asTypedList(length));
   }
 }

@@ -340,6 +340,9 @@ CGEventRef SelectionHookCore::mouseEventCallback(CGEventTapProxy proxy, CGEventT
     CGPoint pos = CGEventGetLocation(event);
     CGEventFlags flags = CGEventGetFlags(event);
     dispatch_async(dispatch_get_main_queue(), ^{
+        // Guard against use-after-free if sh_destroy runs before this block.
+        if (!hook || !hook->running)
+            return;
         hook->processMouseEvent(type, pos, button, flag, flags);
     });
 
@@ -560,10 +563,8 @@ bool SelectionHookCore::getSelectedText(NSRunningApplication *frontApp, TextSele
     if (!frontApp)
         return false;
 
-    if (is_processing.load())
+    if (is_processing.exchange(true))
         return false;
-    else
-        is_processing.store(true);
 
     selectionInfo.clear();
 

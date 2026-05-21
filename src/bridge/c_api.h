@@ -247,27 +247,26 @@ SH_API int sh_is_running(SelectionHook* hook);
  * selected or the hook is not running.
  *
  * The returned SHSelectionData* is owned by the library. It is valid until
- * the next call to sh_get_current_selection OR until
- * sh_free_selection_data is called on the same hook, whichever comes first.
- * Dart MUST copy the data before the next call.
+ * the pointer returned by sh_get_current_selection.
+ * Caller owns the returned data — MUST call sh_free_selection_data.
  *
  * @param hook Valid SelectionHook instance.
- * @return Current selection data (library-owned), or NULL.
+ * @return Current selection data (caller-owned), or NULL.
  * @thread_safety Safe from any thread.
  */
-SH_API const SHSelectionData* sh_get_current_selection(SelectionHook* hook);
+SH_API SHSelectionData* sh_get_current_selection(SelectionHook* hook);
 
 /**
  * Free a SHSelectionData previously returned by sh_get_current_selection.
  *
- * This is an explicit release. It is also implicitly released by the next
- * sh_get_current_selection call. Safe to call with NULL.
+ * Frees the heap-allocated copy including its string fields.
+ * Safe to call with NULL.
  *
- * @param hook Valid SelectionHook instance.
+ * @param hook Valid SelectionHook instance (unused, kept for API consistency).
  * @param data Pointer returned by sh_get_current_selection, or NULL (no-op).
  * @thread_safety Safe from any thread.
  */
-SH_API void sh_free_selection_data(SelectionHook* hook, const SHSelectionData* data);
+SH_API void sh_free_selection_data(SelectionHook* hook, SHSelectionData* data);
 
 /* ---------------------------------------------------------------------------
  * Callback Registration

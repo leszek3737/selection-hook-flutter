@@ -14,11 +14,6 @@ struct SelectionHook {
     SelectionHookCore* core = nullptr;
     SHSelectionCallback callback = nullptr;
     std::string last_error;
-    std::mutex cache_mutex;
-    SHSelectionData cached_sel_data = {};
-    std::string cached_sel_text;
-    std::string cached_sel_program;
-    bool has_cached_selection = false;
 };
 
 static std::mutex g_global_error_mutex;
@@ -85,62 +80,38 @@ SH_API int sh_is_running(SelectionHook* hook) {
     return hook->core->isRunning() ? 1 : 0;
 }
 
-SH_API const SHSelectionData* sh_get_current_selection(SelectionHook* hook) {
+SH_API SHSelectionData* sh_get_current_selection(SelectionHook* hook) {
     if (!hook || !hook->core) return nullptr;
 
     TextSelectionInfo* info = hook->core->getCurrentSelection();
     if (!info || info->text.empty()) { delete info; return nullptr; }
 
-    std::lock_guard<std::mutex> lock(hook->cache_mutex);
+    // Heap-allocate so caller owns the data — no race with dispatchSelection.
+    auto* result = new (std::nothrow) SHSelectionData();
+    if (!result) { delete info; return nullptr; }
 
-    hook->cached_sel_text = info->text;
-    hook->cached_sel_program = info->programName;
-
-    hook->cached_sel_data.text = hook->cached_sel_text.c_str();
-    hook->cached_sel_data.program_name = hook->cached_sel_program.c_str();
-    hook->cached_sel_data.start_top = {
-        static_cast<int32_t>(info->startTop.x),
-        static_cast<int32_t>(info->startTop.y)
-    };
-    hook->cached_sel_data.start_bottom = {
-        static_cast<int32_t>(info->startBottom.x),
-        static_cast<int32_t>(info->startBottom.y)
-    };
-    hook->cached_sel_data.end_top = {
-        static_cast<int32_t>(info->endTop.x),
-        static_cast<int32_t>(info->endTop.y)
-    };
-    hook->cached_sel_data.end_bottom = {
-        static_cast<int32_t>(info->endBottom.x),
-        static_cast<int32_t>(info->endBottom.y)
-    };
-    hook->cached_sel_data.mouse_start = {
-        static_cast<int32_t>(info->mousePosStart.x),
-        static_cast<int32_t>(info->mousePosStart.y)
-    };
-    hook->cached_sel_data.mouse_end = {
-        static_cast<int32_t>(info->mousePosEnd.x),
-        static_cast<int32_t>(info->mousePosEnd.y)
-    };
-    hook->cached_sel_data.method = static_cast<int32_t>(info->method);
-    hook->cached_sel_data.pos_level = static_cast<int32_t>(info->posLevel);
-    hook->cached_sel_data.is_fullscreen = info->isFullscreen ? 1 : 0;
+    result->text = strdup(info->text.c_str());
+    result->program_name = strdup(info->programName.c_str());
+    result->start_top = { static_cast<int32_t>(info->startTop.x), static_cast<int32_t>(info->startTop.y) };
+    result->start_bottom = { static_cast<int32_t>(info->startBottom.x), static_cast<int32_t>(info->startBottom.y) };
+    result->end_top = { static_cast<int32_t>(info->endTop.x), static_cast<int32_t>(info->endTop.y) };
+    result->end_bottom = { static_cast<int32_t>(info->endBottom.x), static_cast<int32_t>(info->endBottom.y) };
+    result->mouse_start = { static_cast<int32_t>(info->mousePosStart.x), static_cast<int32_t>(info->mousePosStart.y) };
+    result->mouse_end = { static_cast<int32_t>(info->mousePosEnd.x), static_cast<int32_t>(info->mousePosEnd.y) };
+    result->method = static_cast<int32_t>(info->method);
+    result->pos_level = static_cast<int32_t>(info->posLevel);
+    result->is_fullscreen = info->isFullscreen ? 1 : 0;
     delete info;
-    hook->has_cached_selection = true;
 
-    return &hook->cached_sel_data;
+    return result;
 }
 
-SH_API void sh_free_selection_data(SelectionHook* hook, const SHSelectionData* data) {
-    if (!hook || !data) return;
-    if (data == &hook->cached_sel_data) {
-        std::lock_guard<std::mutex> lock(hook->cache_mutex);
-        hook->has_cached_selection = false;
-        hook->cached_sel_text.clear();
-        hook->cached_sel_program.clear();
-        hook->cached_sel_data.text = nullptr;
-        hook->cached_sel_data.program_name = nullptr;
-    }
+SH_API void sh_free_selection_data(SelectionHook* hook, SHSelectionData* data) {
+    if (!data) return;
+    // Free heap-allocated strings from strdup in sh_get_current_selection.
+    free(const_cast<char*>(data->text));
+    free(const_cast<char*>(data->program_name));
+    delete data;
 }
 
 SH_API int sh_set_selection_callback(SelectionHook* hook, SHSelectionCallback callback) {
