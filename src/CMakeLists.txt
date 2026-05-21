@@ -11,18 +11,15 @@ if (APPLE)
     "mac/lib/keyboard.mm"
   )
 elseif (LINUX)
-  # TODO(Phase 6): Replace stub with real port.
+  # TODO(Phase 6): Replace stub with real port (X11 only).
   # Copy pattern from mac/selection_hook_core.{h,mm} — strip N-API,
-  # wire CGEventTap → X11/Wayland event loop, use SHSelectionCallback.
+  # wire X11 event loop, use SHSelectionCallback.
   # Then add real sources:
   #   bridge/c_api_linux.cc
   #   linux/selection_hook_core.cc
   #   linux/lib/keyboard.cc
   #   linux/lib/utils.cc
   #   linux/protocols/x11.cc
-  #   linux/protocols/wayland.cc
-  #   linux/protocols/wayland/ext-data-control-v1-protocol.c
-  #   linux/protocols/wayland/wlr-data-control-unstable-v1-protocol.c
   set(SOURCES "bridge/c_api.cc")
 elseif (WIN32)
   # TODO(Phase 6): Replace stub with real port.
@@ -63,10 +60,9 @@ if (APPLE)
 endif()
 
 if (LINUX)
-  # TODO(Phase 6): Add Linux dependencies when real port is ready.
+  # TODO(Phase 6): Add Linux dependencies when real port is ready (X11 only).
   # target_link_libraries(selection_hook_flutter PRIVATE
   #   X11 Xfixes Xi Xtst
-  #   wayland-client wayland-cursor
   # )
 endif()
 
