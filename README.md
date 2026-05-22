@@ -23,10 +23,10 @@ N-API) to C-ABI for `dart:ffi` — preserving ~95% of the upstream native code.
 
 | Feature | macOS | Windows | Linux X11 | Linux Wayland |
 |---------|-------|---------|-----------|---------------|
-| Text selection | ✅ | planned | planned | - |
-| Mouse events | ✅ | planned | planned | - |
-| Keyboard events | ✅ | planned | planned | - |
-| Clipboard | ✅ | planned | — | — |
+| Text selection | ✅ | ✅ | ✅ | partial (code present, not buildable) |
+| Mouse events | ✅ | ✅ | ✅ | — |
+| Keyboard events | ✅ | ✅ | ✅ | — |
+| Clipboard read/write | ✅ | ✅ | — | — |
 
 ## Requirements
 
@@ -73,17 +73,18 @@ void main() {
 
 ### SelectionHook (singleton)
 
-| Method | Description |
-|--------|-------------|
+| Method / Getter | Description |
+|-----------------|-------------|
 | `start()` | Start monitoring. May throw `StateError` if accessibility not granted. |
 | `stop()` | Stop monitoring. Blocks until no in-flight callbacks. |
 | `dispose()` | Stop + release all native resources. Idempotent. |
 | `getCurrentSelection()` | Synchronous snapshot of current selection (or null). |
 | `configure({...})` | Set config before `start()`. Options: `debug`, `enableMouseMove`, `enableClipboard`, `selectionPassiveMode`. |
 | `writeClipboard(text)` | Write text to clipboard (macOS/Windows). |
-| `readClipboard()` | Read text from clipboard (macOS/Windows). |
+| `readClipboard()` | Read text from clipboard (macOS/Windows). Returns `String?`. |
 | `enableMouseMove()` | Enable high-CPU mouse move events. Call before `start()`. |
 | `disableMouseMove()` | Disable mouse move events (default). |
+| `isRunning` | `bool` getter — whether the hook is actively monitoring. |
 
 ### Streams
 
@@ -101,8 +102,8 @@ void main() {
 | `programName` | `String` | Bundle/executable name of source app |
 | `startX`, `startY` | `int` | Selection start coordinates (screen pixels) |
 | `endX`, `endY` | `int` | Selection end coordinates |
-| `method` | `int` | Selection method (11=AXAPI, 99=Clipboard…) |
-| `posLevel` | `int` | Position detail level |
+| `method` | `int` | Selection method (11=AXAPI, 1=UIA, 22=PRIMARY, 99=Clipboard) |
+| `posLevel` | `int` | Position detail level (0–4) |
 | `isFullscreen` | `bool` | Source window fullscreen (macOS only) |
 
 ### MouseEvent
@@ -110,9 +111,11 @@ void main() {
 | Field | Type | Description |
 |-------|------|-------------|
 | `x`, `y` | `int` | Screen coordinates |
-| `button` | `int` | Button: -1=None, 0=Left, 1=Middle, 2=Right |
+| `button` | `int` | Button: -1=None, 0=Left, 1=Middle, 2=Right, 3=Back, 4=Forward |
 | `eventType` | `int` | 0=down, 1=up, 2=move, 3=wheel |
 | `flag` | `int` | Wheel direction: 1=Up/Right, -1=Down/Left |
+
+Computed getters: `isMouseDown`, `isMouseUp`, `isMouseMove`, `isMouseWheel`.
 
 ### KeyboardEvent
 
@@ -129,13 +132,16 @@ void main() {
 Dart (SelectionHook singleton)
   → selection_hook_impl.dart (FFI wrapper)
     → NativeCallable.listener (for thread callbacks)
-      → src/bridge/c_api.h (C-ABI)
-        → src/bridge/c_api_mac.mm (macOS bridge)
-          → src/mac/selection_hook_core.{h,mm} (ported from upstream)
+      → src/bridge/c_api.h (C-ABI, 20 functions)
+        ├── src/bridge/c_api_mac.mm → src/mac/selection_hook_core.mm (CGEventTap + AXAPI)
+        ├── src/bridge/c_api_win.cc → src/windows/selection_hook_core.cc (WH_*_LL + UIAutomation)
+        └── src/bridge/c_api_linux.cc → src/linux/selection_hook_core.cc (XRecord + XFixes)
 ```
 
-No platform channels. Callbacks from native OS threads (CGEventTap,
-Windows hook, X11 event loop) are marshalled via `NativeCallable.listener`.
+No platform channels. Callbacks from native OS threads are marshalled via
+`NativeCallable.listener`. Per-platform bridges delegate to platform cores
+that implement selection detection (drag, double-click, shift-click) with
+text extraction via accessibility APIs or clipboard fallback.
 
 ## License
 

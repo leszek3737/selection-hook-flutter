@@ -11,7 +11,7 @@ C-ABI for `dart:ffi`). Desktop only (macOS, Windows, Linux). No iOS/Android.
 - **FFI only** — no platform channels (`MethodChannel`/`EventChannel`). All
   native↔Dart communication via `dart:ffi` + `NativeCallable.listener`.
 - **`NativeCallable.listener`** for callbacks from OS threads (CGEventTap,
-  Windows hooks, X11/Wayland event loops). Never `Pointer.fromFunction`
+  Windows hooks, X11 event loops). Never `Pointer.fromFunction`
   for threaded callbacks.
 - **C-ABI boundary** — opaque `SelectionHook*` handle + `extern "C"` functions.
   No C++ STL types in signatures. No `std::string`, no `std::function`.
@@ -25,17 +25,21 @@ C-ABI for `dart:ffi`). Desktop only (macOS, Windows, Linux). No iOS/Android.
 | Platform | Status | Implementation |
 |----------|--------|----------------|
 | macOS | **Full port** | `src/bridge/c_api_mac.mm` → `src/mac/selection_hook_core.mm` |
-| Windows | Stub | `src/bridge/c_api.cc` (synthetic events). Lib helpers in `src/windows/lib/`. |
-| Linux | Stub | `src/bridge/c_api.cc` (synthetic events). Lib helpers in `src/linux/`. |
+| Windows | **Full port** | `src/bridge/c_api_win.cc` → `src/windows/selection_hook_core.cc` |
+| Linux X11 | **Substantially ported** | `src/bridge/c_api_linux.cc` → `src/linux/selection_hook_core.cc` + `src/linux/protocols/x11.cc` |
+| Linux Wayland | **Code present, not buildable** | `src/linux/protocols/wayland.cc` (missing generated headers + CMake integration) |
 
-Real Linux/Windows ports need `selection_hook_core.{h,cc}` per platform
-(pattern from `src/mac/`), plus `c_api_{linux,win}.cc` bridges. CMakeLists.txt
-has `if(LINUX)` / `if(WIN32)` blocks with TODO lists of needed sources.
+### Per-platform remaining work
+
+- **Windows**: Needs Flutter plugin `windows/CMakeLists.txt` scaffold + testing on Windows hardware.
+- **Linux X11**: Functional, needs testing on Linux.
+- **Linux Wayland**: Missing generated protocol headers (`wayland/ext-data-control-v1-client.h`,
+  `wlr-data-control-unstable-v1-client.h`), CMake integration for `wayland.cc`,
+  and display protocol auto-detection implementation.
 
 ## Build & test
 
 ```bash
-# Edit: work in project root (plugin directory), not example/
 # Build macOS example app:
 cd example && flutter build macos --debug
 
@@ -47,7 +51,7 @@ dart run tool/smoke_test.dart
 ```
 
 **Two build systems on macOS** — sources compile via both CMake and CocoaPods:
-- `src/CMakeLists.txt` builds `.dylib` for Linux/Windows + macOS fallback.
+- `src/CMakeLists.txt` builds shared library (`.dylib`/`.so`/`.dll`) per platform.
 - `macos/selection_hook_flutter.podspec` → `macos/Classes/selection_hook_flutter.mm`
   forwarder `#include`s sources from `src/` for the real `.app` bundle.
   Podspec sets `CLANG_CXX_LANGUAGE_STANDARD c++17`, `MACOSX_DEPLOYMENT_TARGET 10.14`,
@@ -79,18 +83,24 @@ Output: `lib/selection_hook_flutter_bindings_generated.dart`.
 
 | File | Role |
 |------|------|
-| `src/bridge/c_api.h` | C-ABI header — canonical API surface |
+| `src/bridge/c_api.h` | C-ABI header — canonical API surface (20 functions, 5 structs, 2 enums) |
 | `src/bridge/c_api_mac.mm` | macOS bridge (extern "C" implementations) |
-| `src/bridge/c_api.cc` | Stub bridge for Linux/Windows |
-| `src/mac/selection_hook_core.{h,mm}` | Ported macOS core (no N-API) |
-| `src/mac/lib/*.{h,mm}` | Upstream helpers (clipboard, keyboard, utils) |
+| `src/bridge/c_api_win.cc` | Windows bridge (extern "C" implementations) |
+| `src/bridge/c_api_linux.cc` | Linux bridge (extern "C" implementations) |
+| `src/bridge/c_api.cc` | Stub fallback bridge (synthetic events, unused on real platforms) |
+| `src/mac/selection_hook_core.{h,mm}` | macOS core — CGEventTap, AXAPI, clipboard fallback |
+| `src/windows/selection_hook_core.{h,cc}` | Windows core — WH_MOUSE_LL/WH_KEYBOARD_LL, UIAutomation, MSAA |
+| `src/linux/selection_hook_core.{h,cc}` | Linux core — XRecord, XFixes selection detection |
+| `src/linux/common.h` | Linux shared types, ProtocolBase abstraction |
+| `src/linux/protocols/x11.cc` | X11 protocol implementation |
+| `src/linux/protocols/wayland.cc` | Wayland protocol (incomplete — missing generated headers) |
+| `src/{mac,windows,linux}/lib/*` | Platform helpers (clipboard, keyboard, utils) |
 | `lib/selection_hook_flutter.dart` | Public Dart API (singleton, streams) |
 | `lib/src/selection_hook_impl.dart` | FFI adapter (NativeCallable, lifecycle) |
-| `lib/selection_hook_flutter_bindings_generated.dart` | ffigen output |
+| `lib/selection_hook_flutter_bindings_generated.dart` | ffigen output (725 lines) |
 | `example/lib/main.dart` | Demo app |
-| `tool/smoke_test.dart` | Pure Dart FFI smoke test |
+| `tool/smoke_test.dart` | Pure Dart FFI smoke test (macOS only) |
 | `ffigen.yaml` | ffigen config |
-| `PORTING_NOTES.md` | API surface mapping, TSFN→callback mapping |
 | `PLATFORM_NOTES.md` | Per-platform permissions, build, port status |
 
 ## Architecture pattern for adding a platform
@@ -108,7 +118,7 @@ Output: `lib/selection_hook_flutter_bindings_generated.dart`.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **selection-hook-flutter** (1548 symbols, 2627 relationships, 19 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **selection-hook-flutter** (1824 symbols, 3340 relationships, 34 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
