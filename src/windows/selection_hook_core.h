@@ -127,8 +127,6 @@ class SelectionHookCore
     HANDLE hook_thread{NULL};
     DWORD hook_thread_id{0};
 
-    bool com_initialized{false};
-    IUIAutomation *pUIAutomation{nullptr};
     IUIAutomation *pUIAHook{nullptr};
     CONTROLTYPEID uia_control_type{UIA_WindowControlTypeId};
 

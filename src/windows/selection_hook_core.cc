@@ -85,18 +85,6 @@ SelectionHookCore::~SelectionHookCore()
     }
 
     stop();
-
-    if (pUIAutomation)
-    {
-        pUIAutomation->Release();
-        pUIAutomation = nullptr;
-    }
-
-    if (com_initialized)
-    {
-        CoUninitialize();
-        com_initialized = false;
-    }
 }
 
 void SelectionHookCore::setCallback(SHSelectionCallback cb)
@@ -225,7 +213,7 @@ const char *SelectionHookCore::lastError() const
 static bool InitComOnCurrentThread()
 {
     HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    return SUCCEEDED(hr) || hr == S_FALSE || hr == RPC_E_CHANGED_MODE;
+    return SUCCEEDED(hr);
 }
 
 static IUIAutomation *CreateUIA()
@@ -255,7 +243,8 @@ TextSelectionInfo *SelectionHookCore::getCurrentSelection()
     if (!hwnd)
         return nullptr;
 
-    if (!InitComOnCurrentThread())
+    bool comInitOk = InitComOnCurrentThread();
+    if (!comInitOk)
     {
         std::lock_guard<std::mutex> lock(error_mutex);
         last_error = "Failed to initialize COM for getCurrentSelection";
@@ -265,6 +254,7 @@ TextSelectionInfo *SelectionHookCore::getCurrentSelection()
     IUIAutomation *localUIA = CreateUIA();
     if (!localUIA)
     {
+        CoUninitialize();
         std::lock_guard<std::mutex> lock(error_mutex);
         last_error = "Failed to initialize UI Automation for getCurrentSelection";
         return nullptr;
@@ -286,12 +276,14 @@ TextSelectionInfo *SelectionHookCore::getCurrentSelection()
     {
         is_triggered_by_user.store(false);
         ReleaseUIA(localUIA);
+        CoUninitialize();
         delete info;
         return nullptr;
     }
 
     is_triggered_by_user.store(false);
     ReleaseUIA(localUIA);
+    CoUninitialize();
 
     if (!GetProgramNameFromHwnd(hwnd, info->programName))
     {
@@ -398,7 +390,8 @@ LRESULT CALLBACK SelectionHookCore::MouseHookCallback(int nCode, WPARAM wParam, 
         mem->ptX = pMouseInfo->pt.x;
         mem->ptY = pMouseInfo->pt.y;
         mem->mouseData = pMouseInfo->mouseData;
-        PostThreadMessage(inst->hook_thread_id, WM_SH_MOUSE_EVENT, reinterpret_cast<WPARAM>(mem), 0);
+        if (!PostThreadMessage(inst->hook_thread_id, WM_SH_MOUSE_EVENT, reinterpret_cast<WPARAM>(mem), 0))
+            delete mem;
     }
     return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
@@ -414,7 +407,8 @@ LRESULT CALLBACK SelectionHookCore::KeyboardHookCallback(int nCode, WPARAM wPara
         mem->vkCode = pKeyInfo->vkCode;
         mem->scanCode = pKeyInfo->scanCode;
         mem->flags = pKeyInfo->flags;
-        PostThreadMessage(inst->hook_thread_id, WM_SH_KEYBOARD_EVENT, reinterpret_cast<WPARAM>(mem), 0);
+        if (!PostThreadMessage(inst->hook_thread_id, WM_SH_KEYBOARD_EVENT, reinterpret_cast<WPARAM>(mem), 0))
+            delete mem;
     }
     return CallNextHookEx(NULL, nCode, wParam, lParam);
 }
@@ -828,27 +822,28 @@ bool SelectionHookCore::getSelectedText(HWND hwnd, TextSelectionInfo &selectionI
 
 bool SelectionHookCore::shouldProcessGetSelection()
 {
-    static bool lastResult = true;
-    static DWORD lastCheckTime = 0;
+    static std::atomic<bool> lastResult{true};
+    static std::atomic<DWORD> lastCheckTime{0};
 
-    if (GetTickCount() - lastCheckTime < 10000)
+    if (GetTickCount() - lastCheckTime.load() < 10000)
     {
-        return lastResult;
+        return lastResult.load();
     }
 
     QUERY_USER_NOTIFICATION_STATE state;
     HRESULT hr = SHQueryUserNotificationState(&state);
 
-    lastCheckTime = GetTickCount();
+    lastCheckTime.store(GetTickCount());
 
     if (FAILED(hr))
     {
-        lastResult = true;
-        return lastResult;
+        lastResult.store(true);
+        return true;
     }
 
-    lastResult = state != QUNS_RUNNING_D3D_FULL_SCREEN && state != QUNS_PRESENTATION_MODE;
-    return lastResult;
+    bool r = state != QUNS_RUNNING_D3D_FULL_SCREEN && state != QUNS_PRESENTATION_MODE;
+    lastResult.store(r);
+    return r;
 }
 
 bool SelectionHookCore::shouldProcessViaClipboard(HWND hwnd, std::wstring &programName)
@@ -1176,8 +1171,6 @@ bool SelectionHookCore::getTextViaAccessible(HWND hwnd, TextSelectionInfo &selec
     HRESULT hr = AccessibleObjectFromWindow(hwnd, OBJID_CLIENT, IID_IAccessible, (void **)&pAcc);
     if (FAILED(hr) || !pAcc)
         return false;
-
-    pAcc->AddRef();
 
     VARIANT varChild;
     VariantInit(&varChild);
