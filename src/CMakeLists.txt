@@ -11,16 +11,17 @@ if (APPLE)
     "mac/lib/keyboard.mm"
   )
 elseif (LINUX)
-  # TODO(Phase 6): Replace stub with real port (X11 only).
-  # Copy pattern from mac/selection_hook_core.{h,mm} — strip N-API,
-  # wire X11 event loop, use SHSelectionCallback.
-  # Then add real sources:
-  #   bridge/c_api_linux.cc
-  #   linux/selection_hook_core.cc
-  #   linux/lib/keyboard.cc
-  #   linux/lib/utils.cc
-  #   linux/protocols/x11.cc
-  set(SOURCES "bridge/c_api.cc")
+  set(SOURCES
+    "bridge/c_api_linux.cc"
+    "linux/selection_hook_core.cc"
+    "linux/selection_hook_core.h"
+    "linux/common.h"
+    "linux/lib/keyboard.cc"
+    "linux/lib/keyboard.h"
+    "linux/lib/utils.cc"
+    "linux/lib/utils.h"
+    "linux/protocols/x11.cc"
+  )
 elseif (WIN32)
   # TODO(Phase 6): Replace stub with real port.
   # Copy pattern from mac/selection_hook_core.{h,mm} — strip N-API,
@@ -41,6 +42,8 @@ add_library(selection_hook_flutter SHARED ${SOURCES})
 
 target_include_directories(selection_hook_flutter PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/bridge"
+)
+target_include_directories(selection_hook_flutter PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
@@ -60,10 +63,9 @@ if (APPLE)
 endif()
 
 if (LINUX)
-  # TODO(Phase 6): Add Linux dependencies when real port is ready (X11 only).
-  # target_link_libraries(selection_hook_flutter PRIVATE
-  #   X11 Xfixes Xi Xtst
-  # )
+  target_link_libraries(selection_hook_flutter PRIVATE
+    X11 Xfixes Xtst
+  )
 endif()
 
 if (WIN32)
