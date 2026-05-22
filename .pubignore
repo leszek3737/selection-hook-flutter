@@ -1,0 +1,11 @@
+_upstream/
+tool/
+.claude/
+build/
+CLAUDE.md
+AGENTS.md
+PLATFORM_NOTES.md
+PORTING_NOTES.md
+TODO.md
+ffigen.yaml
+.gitignore

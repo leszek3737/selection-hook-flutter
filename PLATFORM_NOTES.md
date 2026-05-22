@@ -1,6 +1,6 @@
 # Platform Notes
 
-## macOS (host platform — fully ported)
+## macOS (fully ported)
 
 ### Permissions
 - **Accessibility**: Required for AXAPI text selection. App must be listed in
@@ -16,73 +16,111 @@
 - **C++ standard**: C++17 with libc++
 - **Entitlements**: `example/macos/Runner/DebugProfile.entitlements` and
   `Release.entitlements` — set `com.apple.security.app-sandbox` to `false`.
+- **Library validation**: Must be disabled (`com.apple.security.cs.disable-library-validation = true`)
+  in Release entitlements for FFI dylib loading.
 
 ### Architecture
 - CGEventTap captures mouse/keyboard events on a dedicated CFRunLoop thread.
 - Events dispatched to main dispatch queue via `dispatch_async`.
 - AXAPI queries run on main thread (safe for AppKit/NSWorkspace).
-- Selection detection: drag (≥8px), double-click (≤500ms, ≤3px), shift+click.
+- Selection detection: drag (>=8px), double-click (<=500ms, <=3px), shift+click.
+- I-beam cursor validation at mouse-down and mouse-up.
 
 ### Known limitations
 - Clipboard fallback delays up to 100ms on main thread (rare, only when AXAPI fails).
 - I-beam cursor detection uses fixed hotspot coordinates — may break on future
-  macOS cursor theme changes.
+  macOS cursor theme changes. macOS 26 hotspot `{12,11}` already accounted for.
 
 ---
 
-## Linux
+## Windows (fully ported)
 
 ### Status
-**Stub only.** Helper sources copied from upstream (`src/linux/lib/`,
-`src/linux/protocols/`), but the main `selection_hook.cc` has not been ported.
+**Fully ported.** All native code ported from upstream — `selection_hook_core.{h,cc}`
+(1666 lines), `c_api_win.cc` bridge (287 lines), all 4 lib helpers complete.
+CMakeLists.txt has real sources and link libraries.
 
-### What needs to happen
-1. Port `_upstream/src/linux/selection_hook.cc` to `src/linux/selection_hook_core.{h,cc}`
-   — strip N-API, replace ThreadSafeFunction with SHSelectionCallback.
-2. Write `src/bridge/c_api_linux.cc` bridge (copy pattern from `c_api_mac.mm`).
-3. Update `src/CMakeLists.txt` `elseif(LINUX)` block with real sources.
+### Remaining work
+- Flutter plugin Windows CMakeLists.txt scaffold (the `windows/` directory at plugin root).
+- Testing on actual Windows hardware.
 
-### Dependencies (deferred)
-- X11: `libX11`, `libXfixes`, `libXi`, `libXtst`
-- Wayland: `wayland-client`, `wayland-cursor`, `wayland-protocols` (for
-  `ext-data-control-v1` and `wlr-data-control-unstable-v1`)
+### Architecture
+- `WH_MOUSE_LL` + `WH_KEYBOARD_LL` hooks on dedicated thread via `SetWindowsHookEx`.
+- Custom window messages (`WM_SH_MOUSE_EVENT`, `WM_SH_KEYBOARD_EVENT`) posted via
+  `PostThreadMessage` for safe processing on the hook thread.
+- Three text extraction strategies:
+  1. **UIAutomation** — `IUIAutomation` with TextPattern + `IsSelectionActivePropertyId`
+     + `LegacyIAccessible` fallback.
+  2. **MSAA/Accessible** — direct `AccessibleObjectFromWindow`.
+  3. **Clipboard fallback** — backup/restore with Ctrl+Insert then Ctrl+C, delay-read
+     list support, keyboard interrupt detection.
+- Selection detection: drag (>=8px), double-click (uses `GetDoubleClickTime()`), shift+click.
+- DPI awareness: dynamic `SetProcessDpiAwareness` via Shcore.dll with fallback.
+- Fullscreen detection: `SHQueryUserNotificationState` checked every 10 seconds.
 
-### Build notes
-- Wayland protocol `.c` files generated from `.xml` are checked into
-  `src/linux/protocols/wayland/`. No `wayland-scanner` needed at build time.
-- Linux Wayland has coordinate limitations: `startTop`/`startBottom`/
-  `endTop`/`endBottom` always `INVALID_COORDINATE` (-99999). Mouse coordinates
-  may also be unavailable.
-
-### Display protocol detection
-- Upstream detects: X11 (DISPLAY env), Wayland (WAYLAND_DISPLAY env).
-- Compositor type detected via XDG_CURRENT_DESKTOP and compositor-specific env vars
-  (HYPRLAND_INSTANCE_SIGNATURE, SWAYSOCK).
-
----
-
-## Windows
-
-### Status
-**Stub only.** Helper sources copied from upstream (`src/windows/lib/`),
-but the main `selection_hook.cc` has not been ported.
-
-### What needs to happen
-1. Port `_upstream/src/windows/selection_hook.cc` to `src/windows/selection_hook_core.{h,cc}`
-   — strip N-API, replace ThreadSafeFunction with SHSelectionCallback.
-2. Write `src/bridge/c_api_win.cc` bridge (copy pattern from `c_api_mac.mm`).
-3. Update `src/CMakeLists.txt` `elseif(WIN32)` block with real sources.
-
-### Dependencies (deferred)
-- `ole32`, `oleaut32` (COM for UI Automation)  
-- `user32`, `gdi32` (window management)
-
-### Build notes
-- Requires Visual Studio with CMake 3.14+.
-- UI Automation requires COM initialization (`CoInitializeEx` with
-  `COINIT_MULTITHREADED`).
+### Build
+- **Toolchain**: Visual Studio with C++ workload, CMake >= 3.14.
+- **Link libraries**: `ole32`, `oleaut32`, `user32`, `gdi32`, `oleacc`,
+  `UIAutomationCore`, `shell32`.
+- **COM**: `CoInitializeEx` with `COINIT_MULTITHREADED`.
+- **String conversion**: `StringPool` class with pooled buffers for WideToUtf8/Utf8ToWide.
 
 ### Known issues
-- Windows clipboard fallback uses Ctrl+C injection — may interfere with
-  user clipboard if not careful. Upstream has clipboard backup/restore
-  logic to mitigate this.
+- Clipboard fallback uses Ctrl+C injection — clipboard backup/restore logic mitigates
+  interference but is not instantaneous.
+
+---
+
+## Linux X11 (substantially ported)
+
+### Status
+**X11 fully ported.** `selection_hook_core.{h,cc}` (120+732 lines), `c_api_linux.cc`
+bridge (260 lines), X11 protocol (865 lines), keyboard and utils helpers complete.
+CMakeLists.txt has X11 sources and link libraries.
+
+### Wayland status
+Wayland protocol code exists (`src/linux/protocols/wayland.cc`, 2181 lines) with
+support for `ext-data-control-v1` and `wlr-data-control-unstable-v1` v2+, but:
+- Generated Wayland protocol headers (`wayland/ext-data-control-v1-client.h`,
+  `wlr-data-control-unstable-v1-client.h`) are **missing** from disk.
+- `wayland.cc` is **not listed** in CMakeLists.txt.
+- Link libraries (`wayland-client`, `libevdev`) not in CMakeLists.txt.
+- `selection_hook_core.cc` hardcodes `CreateX11Protocol()` — display protocol
+  auto-detection (`DetectDisplayProtocol()`) is declared but not implemented.
+
+### Architecture (X11)
+- `XRecord` extension for mouse/keyboard input monitoring on dedicated thread.
+- `XFixes` extension for PRIMARY selection change detection on separate thread.
+- `XGetWindowProperty` / `WM_CLASS` for active window and program name.
+- `XConvertSelection` for reading PRIMARY selection text.
+- Modifier state tracking for keyboard events.
+- Selection detection: drag (>=8px), double-click (<=500ms, <=3px), shift+click.
+- Selection event correlation window: 500ms.
+
+### Build (X11)
+- **Link libraries**: `X11`, `Xfixes`, `Xtst`.
+- **Wayland (when enabled)**: `wayland-client`, `libevdev`, `libdbus-1`.
+
+### Dependencies
+```
+# Debian/Ubuntu
+sudo apt install libx11-dev libxfixes-dev libxtst-dev
+
+# Wayland (when enabled)
+sudo apt install libwayland-dev libevdev-dev libdbus-1-dev wayland-protocols
+```
+
+### Build notes
+- Wayland protocol `.c` headers should be generated from XML via `wayland-scanner`.
+- Linux Wayland has coordinate limitations: `startTop`/`startBottom`/
+  `endTop`/`endBottom` always `INVALID_COORDINATE` (-99999). Mouse coordinates
+  may also be unavailable depending on compositor.
+
+### Display protocol detection
+- X11 detected via `DISPLAY` env var.
+- Wayland detected via `WAYLAND_DISPLAY` env var.
+- Compositor type via `XDG_CURRENT_DESKTOP` and compositor-specific env vars
+  (`HYPRLAND_INSTANCE_SIGNATURE`, `SWAYSOCK`).
+
+### Clipboard
+- `sh_write_clipboard` / `sh_read_clipboard` return errors on Linux (not implemented).
