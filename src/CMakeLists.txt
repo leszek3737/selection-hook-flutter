@@ -23,17 +23,14 @@ elseif (LINUX)
     "linux/protocols/x11.cc"
   )
 elseif (WIN32)
-  # TODO(Phase 6): Replace stub with real port.
-  # Copy pattern from mac/selection_hook_core.{h,mm} — strip N-API,
-  # replace Windows hooks with SHSelectionCallback.
-  # Then add real sources:
-  #   bridge/c_api_win.cc
-  #   windows/selection_hook_core.cc
-  #   windows/lib/clipboard.cc
-  #   windows/lib/keyboard.cc
-  #   windows/lib/string_pool.cc
-  #   windows/lib/utils.cc
-  set(SOURCES "bridge/c_api.cc")
+  set(SOURCES
+    "bridge/c_api_win.cc"
+    "windows/selection_hook_core.cc"
+    "windows/lib/clipboard.cc"
+    "windows/lib/keyboard.cc"
+    "windows/lib/string_pool.cc"
+    "windows/lib/utils.cc"
+  )
 else()
   set(SOURCES "bridge/c_api.cc")
 endif()
@@ -69,10 +66,9 @@ if (LINUX)
 endif()
 
 if (WIN32)
-  # TODO(Phase 6): Add Windows dependencies when real port is ready.
-  # target_link_libraries(selection_hook_flutter PRIVATE
-  #   ole32 oleaut32 user32 gdi32
-  # )
+  target_link_libraries(selection_hook_flutter PRIVATE
+    ole32 oleaut32 user32 gdi32 oleacc UIAutomationCore shell32
+  )
 endif()
 
 target_compile_definitions(selection_hook_flutter PUBLIC DART_SHARED_LIB)
